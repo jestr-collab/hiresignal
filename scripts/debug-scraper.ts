@@ -23,7 +23,7 @@ async function main() {
     const jobHrefs = await page.evaluate(() => {
       const out: string[] = [];
       const seen = new Set<string>();
-      for (const a of document.querySelectorAll("a[href]")) {
+      for (const a of Array.from(document.querySelectorAll("a[href]"))) {
         const href = a.getAttribute("href")?.trim() ?? "";
         if (!href.toLowerCase().includes("job")) continue;
         if (seen.has(href)) continue;

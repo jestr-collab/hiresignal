@@ -1,26 +1,45 @@
 {
-  "name": "hiresignal-tmp",
+  "name": "hiresignal",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "seed": "ts-node scripts/seed-companies.ts",
+    "fix-urls": "ts-node scripts/fix-greenhouse-urls.ts",
+    "fix-lever-urls": "ts-node scripts/fix-lever-urls.ts",
+    "bulk-find": "ts-node scripts/bulk-find-companies.ts",
+    "debug-scraper": "ts-node scripts/debug-scraper.ts",
+    "validate-urls": "ts-node scripts/validate-urls.ts",
+    "add-company": "ts-node scripts/add-company.ts",
+    "test-url": "ts-node scripts/test-url.ts",
+    "digest:test": "curl -X POST http://localhost:3001/api/cron/digest -H 'Content-Type: application/json' -H 'x-cron-secret: mysecretkey123'",
+    "cron:run": "ts-node scripts/cron-runner.ts"
   },
   "dependencies": {
+    "@clerk/nextjs": "^6.36.10",
+    "@stripe/stripe-js": "^9.0.1",
+    "@supabase/supabase-js": "^2.101.1",
+    "csv-parse": "^6.2.1",
+    "next": "14.2.35",
+    "playwright": "^1.59.1",
     "react": "^18",
     "react-dom": "^18",
-    "next": "14.2.35"
+    "resend": "^6.10.0",
+    "stripe": "^22.0.0"
   },
   "devDependencies": {
-    "typescript": "^5",
-    "@types/node": "^20",
+    "@types/node": "^20.19.39",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "dotenv": "^17.4.0",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.35",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.35"
+    "ts-node": "^10.9.2",
+    "typescript": "^5"
   }
 }

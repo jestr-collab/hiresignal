@@ -18,6 +18,40 @@ type SignalWithNested = Signal & {
   companies: CompanyWithContacts | null;
 };
 
+function confidencePriority(level: Signal["confidence_level"]): number {
+  switch (level) {
+    case "very_high":
+      return 3;
+    case "high":
+      return 2;
+    case "medium":
+    default:
+      return 1;
+  }
+}
+
+function shouldReplaceForCompany(next: Signal, current: Signal): boolean {
+  const nextConfidence = confidencePriority(next.confidence_level);
+  const currentConfidence = confidencePriority(current.confidence_level);
+  if (nextConfidence !== currentConfidence) {
+    return nextConfidence > currentConfidence;
+  }
+
+  const nextScore = next.score ?? 0;
+  const currentScore = current.score ?? 0;
+  if (nextScore !== currentScore) {
+    return nextScore > currentScore;
+  }
+
+  const nextDetectedAt = next.detected_at
+    ? new Date(next.detected_at).getTime()
+    : 0;
+  const currentDetectedAt = current.detected_at
+    ? new Date(current.detected_at).getTime()
+    : 0;
+  return nextDetectedAt > currentDetectedAt;
+}
+
 function pickPrimaryContact(contacts: Contact[]): Contact | null {
   if (contacts.length === 0) return null;
   const sorted = [...contacts].sort((a, b) => {
@@ -81,13 +115,18 @@ export default function DashboardPage() {
 
       const list = (signals ?? []) as SignalWithNested[];
 
-      const built: DashboardTableRow[] = [];
-      const seenCompanyId = new Set<string>();
+      const bestByCompanyId = new Map<string, SignalWithNested>();
       for (const s of list) {
         if (!s.companies || !s.company_id) continue;
-        if (seenCompanyId.has(s.company_id)) continue;
-        seenCompanyId.add(s.company_id);
+        const existing = bestByCompanyId.get(s.company_id);
+        if (!existing || shouldReplaceForCompany(s, existing)) {
+          bestByCompanyId.set(s.company_id, s);
+        }
+      }
 
+      const built: DashboardTableRow[] = [];
+      for (const s of Array.from(bestByCompanyId.values())) {
+        if (!s.companies) continue;
         const { contacts: nestedContacts, ...companyFields } = s.companies;
         const company = companyFields as Company;
         const contact = pickPrimaryContact(nestedContacts ?? []);
@@ -100,6 +139,14 @@ export default function DashboardPage() {
           contact,
         });
       }
+
+      built.sort((a, b) => {
+        const confidenceDiff =
+          confidencePriority(b.signal.confidence_level) -
+          confidencePriority(a.signal.confidence_level);
+        if (confidenceDiff !== 0) return confidenceDiff;
+        return (b.signal.score ?? 0) - (a.signal.score ?? 0);
+      });
 
       if (!cancelled) {
         setRows(built);
@@ -166,7 +213,15 @@ export default function DashboardPage() {
           {error}
         </p>
       ) : null}
-      {loading ? <LoadingSpinner /> : <SignalTable rows={filtered} />}
+      {loading ? (
+        <LoadingSpinner />
+      ) : rows.length === 0 ? (
+        <div className="rounded-md border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-700">
+          No signals found — run the filter pipeline
+        </div>
+      ) : (
+        <SignalTable rows={filtered} />
+      )}
     </div>
   );
 }

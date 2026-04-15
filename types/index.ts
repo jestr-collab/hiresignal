@@ -40,6 +40,8 @@ export interface ScrapedBoardJob {
 /** @deprecated Use ScrapedBoardJob */
 export type ScrapedGreenhouseJob = ScrapedBoardJob;
 
+export type ConfidenceLevel = "very_high" | "high" | "medium";
+
 /** Row shape for `signals` (Supabase). */
 export interface Signal {
   id: string;
@@ -52,6 +54,7 @@ export interface Signal {
   context: string | null;
   why_it_matters: string | null;
   enterprise_flag: boolean | null;
+  confidence_level: ConfidenceLevel | null;
   detected_at: string | null;
   is_new: boolean | null;
   week_of: string | null;

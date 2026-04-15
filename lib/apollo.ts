@@ -127,6 +127,7 @@ export async function enrichCompany(
 }
 
 export type ApolloContactRow = {
+  id?: string | null;
   first_name: string | null;
   last_name: string | null;
   title: string | null;
@@ -188,6 +189,11 @@ function inferSeniority(title: string | null): string | null {
 }
 
 function mapApolloPerson(p: Record<string, unknown>): ApolloContactRow | null {
+  const nestedContact =
+    p.contact && typeof p.contact === "object"
+      ? (p.contact as Record<string, unknown>)
+      : null;
+  const id = typeof p.id === "string" ? p.id : null;
   const first =
     (typeof p.first_name === "string" && p.first_name) ||
     (typeof p.first_name_obfuscated === "string" && p.first_name_obfuscated) ||
@@ -197,7 +203,11 @@ function mapApolloPerson(p: Record<string, unknown>): ApolloContactRow | null {
     (typeof p.last_name_obfuscated === "string" && p.last_name_obfuscated) ||
     null;
   const title = typeof p.title === "string" ? p.title : null;
-  const email = typeof p.email === "string" ? p.email : null;
+  const email =
+    (typeof p.email === "string" && p.email) ||
+    (nestedContact && typeof nestedContact.email === "string"
+      ? nestedContact.email
+      : null);
   const linkedin_url =
     (typeof p.linkedin_url === "string" && p.linkedin_url) ||
     (typeof p.linkedin === "string" && p.linkedin) ||
@@ -215,6 +225,7 @@ function mapApolloPerson(p: Record<string, unknown>): ApolloContactRow | null {
       : inferSeniority(title);
 
   return {
+    id,
     first_name: first,
     last_name: last,
     title,
@@ -224,12 +235,10 @@ function mapApolloPerson(p: Record<string, unknown>): ApolloContactRow | null {
   };
 }
 
-const APOLLO_PEOPLE_SEARCH_URL = "https://api.apollo.io/api/v1/people/search";
-
-function getHunterApiKey(): string | null {
-  const k = process.env.HUNTER_API_KEY?.trim();
-  return k || null;
-}
+const APOLLO_PEOPLE_SEARCH_URL = "https://api.apollo.io/api/v1/mixed_people/api_search";
+const APOLLO_PEOPLE_MATCH_URL = "https://api.apollo.io/api/v1/people/match";
+let hasLoggedApolloRawResponse = false;
+let hasLoggedApolloFirstContact = false;
 
 /** Passes on substring alone — excludes "chief" (handled separately). */
 const HUNTER_TITLE_STANDALONE_TERMS = [
@@ -377,113 +386,6 @@ export function contactTitlePassesHunterFilter(
   return false;
 }
 
-/**
- * Hunter.io Domain Search — free tier friendly (25 searches/mo).
- * GET https://api.hunter.io/v2/domain-search?domain=&limit=2&api_key=
- */
-export async function findContactsHunter(
-  domain: string,
-  companySizeRange?: string | null
-): Promise<ApolloContactRow[]> {
-  const key = getHunterApiKey();
-  if (!key) {
-    console.warn(
-      "[hunter] HUNTER_API_KEY is not set — skipping findContactsHunter"
-    );
-    return [];
-  }
-
-  const d = normalizeApolloDomain(domain);
-  if (!d) return [];
-
-  const url = new URL("https://api.hunter.io/v2/domain-search");
-  url.searchParams.set("domain", d);
-  url.searchParams.set("limit", "10");
-  url.searchParams.set("api_key", key);
-
-  try {
-    const res = await fetch(url.toString(), {
-      headers: { Accept: "application/json" },
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      console.warn(
-        `[hunter] domain-search ${d}: HTTP ${res.status} body=${JSON.stringify(text.slice(0, 500))}`
-      );
-      return [];
-    }
-
-    let json: unknown;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      console.warn(`[hunter] domain-search ${d}: invalid JSON`);
-      return [];
-    }
-
-    const data = json && typeof json === "object" ? (json as { data?: unknown }).data : null;
-    if (!data || typeof data !== "object") {
-      console.warn(`[hunter] domain-search ${d}: missing data object`);
-      return [];
-    }
-
-    const emails = (data as { emails?: unknown }).emails;
-    if (!Array.isArray(emails) || emails.length === 0) {
-      console.warn(
-        `[hunter] domain-search ${d}: no emails in response (results may be empty)`
-      );
-      return [];
-    }
-
-    const out: ApolloContactRow[] = [];
-    for (const item of emails.slice(0, 10)) {
-      if (!item || typeof item !== "object") continue;
-      const e = item as Record<string, unknown>;
-      const emailVal = typeof e.value === "string" ? e.value : null;
-      if (!emailVal) continue;
-
-      const first =
-        typeof e.first_name === "string" ? e.first_name : null;
-      const last = typeof e.last_name === "string" ? e.last_name : null;
-      const position =
-        typeof e.position === "string"
-          ? e.position
-          : typeof e.position_raw === "string"
-            ? e.position_raw
-            : null;
-
-      let linkedin = "";
-      if (typeof e.linkedin === "string" && e.linkedin) {
-        linkedin = e.linkedin.startsWith("http")
-          ? e.linkedin
-          : `https://linkedin.com/in/${e.linkedin}`;
-      } else if (typeof e.linkedin_url === "string" && e.linkedin_url) {
-        linkedin = e.linkedin_url;
-      }
-
-      const row: ApolloContactRow = {
-        first_name: first,
-        last_name: last,
-        title: position,
-        email: emailVal,
-        linkedin_url: linkedin,
-        seniority: "unknown",
-      };
-      if (!contactTitlePassesHunterFilter(row.title, companySizeRange)) {
-        continue;
-      }
-      out.push(row);
-      if (out.length >= 2) break;
-    }
-
-    return out;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`[hunter] findContactsHunter(${d}): ${msg}`);
-    return [];
-  }
-}
-
 function extractPeopleOrContacts(
   json: unknown
 ): Record<string, unknown>[] | null {
@@ -500,16 +402,84 @@ function extractPeopleOrContacts(
   return null;
 }
 
-export type ContactFetchSource = "apollo" | "hunter";
+function extractApolloPersonObject(json: unknown): Record<string, unknown> | null {
+  if (!json || typeof json !== "object") return null;
+  const objectJson = json as Record<string, unknown>;
+  const person = objectJson.person;
+  if (person && typeof person === "object") {
+    return person as Record<string, unknown>;
+  }
+  return objectJson;
+}
 
-export type ContactFetchResult = {
-  contacts: ApolloContactRow[];
-  source: ContactFetchSource;
-};
+async function revealApolloEmail(
+  apiKey: string,
+  contact: ApolloContactRow
+): Promise<ApolloContactRow | null> {
+  if (!contact.id) return contact;
+
+  const body = {
+    api_key: apiKey,
+    id: contact.id,
+    reveal_personal_emails: false,
+    reveal_phone_number: false,
+  };
+
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "Cache-Control": "no-cache",
+    "X-Api-Key": apiKey,
+  };
+
+  try {
+    const res = await fetchWith429Retry(() =>
+      fetch(APOLLO_PEOPLE_MATCH_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      })
+    );
+
+    const text = await res.text();
+    if (!res.ok) {
+      console.warn(
+        `[apollo] reveal email failed id=${contact.id}: HTTP ${res.status} bodyFirst500=${JSON.stringify(text.slice(0, 500))}`
+      );
+      return contact;
+    }
+
+    let json: unknown;
+    try {
+      json = text.length ? JSON.parse(text) : null;
+    } catch {
+      console.warn(`[apollo] reveal email invalid JSON id=${contact.id}`);
+      return contact;
+    }
+
+    const matched = extractApolloPersonObject(json);
+    const mapped = matched ? mapApolloPerson(matched) : null;
+    return mapped
+      ? {
+          ...contact,
+          first_name: mapped.first_name ?? contact.first_name,
+          last_name: mapped.last_name ?? contact.last_name,
+          email: mapped.email ?? contact.email,
+          title: mapped.title ?? contact.title,
+          linkedin_url: mapped.linkedin_url ?? contact.linkedin_url,
+          seniority: mapped.seniority ?? contact.seniority,
+        }
+      : contact;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(`[apollo] reveal email threw id=${contact.id}: ${msg}`);
+    return contact;
+  }
+}
 
 /**
- * Apollo People search (primary). POST /api/v1/people/search.
- * Applies the same title filter as Hunter; returns up to 2 contacts.
+ * Apollo People search. POST /api/v1/people/search.
+ * Applies title filtering and returns up to 2 contacts.
  */
 export async function findContacts(
   domain: string,
@@ -530,9 +500,12 @@ export async function findContacts(
 
   const body = {
     api_key: key,
-    q_organization_domains: [d],
+    q_organization_domains_list: [d],
     person_titles: personTitles,
-    per_page: 3,
+    per_page: 5,
+    contact_email_status_v2: ["verified", "unverified"],
+    reveal_personal_emails: true,
+    reveal_phone_number: false,
   };
 
   const headers: Record<string, string> = {
@@ -562,6 +535,11 @@ export async function findContacts(
       return [];
     }
 
+    if (!hasLoggedApolloRawResponse) {
+      hasLoggedApolloRawResponse = true;
+      console.log("[apollo] raw response:", JSON.stringify(json).slice(0, 1000));
+    }
+
     if (!res.ok) {
       console.warn(
         `[apollo] findContacts domain=${d}: HTTP ${res.status} bodyFirst500=${JSON.stringify(text.slice(0, 500))}`
@@ -571,7 +549,16 @@ export async function findContacts(
 
     const raw = extractPeopleOrContacts(json);
     if (!raw || raw.length === 0) {
+      console.warn("[apollo] contacts found: 0");
       return [];
+    }
+
+    if (!hasLoggedApolloFirstContact) {
+      hasLoggedApolloFirstContact = true;
+      console.log(
+        "[apollo] first contact raw:",
+        JSON.stringify(raw[0] ?? null).slice(0, 500)
+      );
     }
 
     const out: ApolloContactRow[] = [];
@@ -585,43 +572,33 @@ export async function findContacts(
       if (out.length >= 2) break;
     }
 
+    for (const row of out) {
+      const hasEmailFlag =
+        raw.find((item) => {
+          const id = typeof item.id === "string" ? item.id : null;
+          return id != null && id === row.id;
+        })?.has_email === true;
+      if (!hasEmailFlag) continue;
+
+      const revealedContact = await revealApolloEmail(key, row);
+      if (revealedContact) {
+        row.first_name = revealedContact.first_name;
+        row.last_name = revealedContact.last_name;
+        row.email = revealedContact.email;
+        row.title = revealedContact.title ?? row.title;
+      }
+      const name = [row.first_name, row.last_name].filter(Boolean).join(" ") || "unknown";
+      console.warn(
+        `[apollo] revealed email for ${name}: ${row.email ? "yes" : "no"}`
+      );
+    }
+
+    console.warn(`[apollo] contacts found: ${out.length}`);
     return out;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn(`[apollo] findContacts(${d}) threw: ${msg}`);
+    console.warn("[apollo] contacts found: 0");
     return [];
   }
-}
-
-/**
- * Try Apollo People search first; if no contacts pass the title filter, fall back to Hunter.
- */
-export async function findContactsWithHunterFallback(
-  domain: string,
-  signalType: string,
-  companySizeRange?: string | null
-): Promise<ContactFetchResult> {
-  const apolloContacts = await findContacts(
-    domain,
-    signalType,
-    companySizeRange
-  );
-  console.warn(
-    `[apollo] contacts found via Apollo: ${apolloContacts.length}`
-  );
-
-  if (apolloContacts.length > 0) {
-    console.warn(`[apollo] contacts found via Hunter fallback: 0`);
-    return { contacts: apolloContacts, source: "apollo" };
-  }
-
-  const hunterContacts = await findContactsHunter(
-    domain,
-    companySizeRange
-  );
-  console.warn(
-    `[apollo] contacts found via Hunter fallback: ${hunterContacts.length}`
-  );
-
-  return { contacts: hunterContacts, source: "hunter" };
 }

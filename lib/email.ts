@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { bestAngleForSignalType } from "@/lib/dashboard-utils";
+import { bestAngleForSignalType, confidenceLabel } from "@/lib/dashboard-utils";
 import type { Company, Contact, Signal } from "@/types";
 
 export type WeeklyDigestSignal = {
@@ -38,12 +38,40 @@ function fromEmail(): string {
   return `HireSignal <${base}>`;
 }
 
+function splitWhyItMatters(value: string | null | undefined): {
+  headline: string;
+  bestFit: string | null;
+} {
+  const lines = (value ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return {
+    headline: lines[0] ?? "Hiring activity worth reviewing this week.",
+    bestFit: lines[1] ?? null,
+  };
+}
+
+function confidenceBadgeStyles(level: Signal["confidence_level"]): string {
+  switch (level) {
+    case "very_high":
+      return "display:inline-block;background:#FFF1F2;color:#BE123C;border:1px solid #FECDD3;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:600;white-space:nowrap;";
+    case "high":
+      return "display:inline-block;background:#FFFBEB;color:#B45309;border:1px solid #FDE68A;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:600;white-space:nowrap;";
+    case "medium":
+    default:
+      return "display:inline-block;background:#FAFAFA;color:#6B7280;border:1px solid #E5E7EB;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:600;white-space:nowrap;";
+  }
+}
+
 function renderSignalCard(row: WeeklyDigestSignal): string {
   const { signal, company, contact } = row;
   const score = signal.score ?? 0;
   const size = company.size_range?.trim() || "Unknown size";
-  const why = signal.why_it_matters?.trim() || signal.context?.trim() || "Hiring signal detected this week.";
+  const why = signal.why_it_matters?.trim() || "Growing sales team → evaluating sales tooling (60 days)\nBest fit: CRM, sales engagement tools";
   const angle = bestAngleForSignalType(signal.signal_type);
+  const confidence = confidenceLabel(signal.confidence_level);
+  const { headline, bestFit } = splitWhyItMatters(why);
 
   return `
     <div style="border:1px solid #e5e5e5;border-radius:14px;padding:20px;background:#ffffff;margin-bottom:14px;">
@@ -58,13 +86,19 @@ function renderSignalCard(row: WeeklyDigestSignal): string {
             </span>
           </div>
         </div>
-        <span style="display:inline-block;color:#0F6E56;font-size:12px;line-height:1.35;font-weight:700;padding-top:2px;white-space:nowrap;">
-          Score: ${score}
-        </span>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+          <span style="display:inline-block;color:#0F6E56;font-size:12px;line-height:1.35;font-weight:700;padding-top:2px;white-space:nowrap;">
+            Score: ${score}
+          </span>
+          <span style="${confidenceBadgeStyles(signal.confidence_level)}">
+            ${escapeHtml(confidence)}
+          </span>
+        </div>
       </div>
-      <div style="margin-top:14px;font-size:15px;line-height:1.6;color:#262626;">
-        ${escapeHtml(why)}
+      <div style="margin-top:14px;font-size:15px;line-height:1.6;color:#171717;font-weight:600;">
+        ${escapeHtml(headline)}
       </div>
+      ${bestFit ? `<div style="margin-top:6px;font-size:14px;line-height:1.6;color:#0F766E;font-weight:700;">${escapeHtml(bestFit)}</div>` : ""}
       <div style="margin-top:12px;font-size:13px;line-height:1.6;color:#525252;">
         <strong style="color:#171717;">Contact:</strong> ${escapeHtml(contactLabel(contact))}
       </div>
@@ -114,11 +148,14 @@ function renderHtml(signals: WeeklyDigestSignal[], appUrl: string): string {
 function renderText(signals: WeeklyDigestSignal[], appUrl: string): string {
   const lines = signals.slice(0, 10).map((row, idx) => {
     const score = row.signal.score ?? 0;
-    const why = row.signal.why_it_matters?.trim() || row.signal.context?.trim() || "Hiring signal detected this week.";
+    const why = row.signal.why_it_matters?.trim() || "Growing sales team → evaluating sales tooling (60 days)\nBest fit: CRM, sales engagement tools";
+    const { headline, bestFit } = splitWhyItMatters(why);
     return [
       `${idx + 1}. ${row.company.name} (${row.company.size_range ?? "Unknown size"})`,
       `   Score: ${score}`,
-      `   Why it matters: ${why}`,
+      `   Confidence: ${confidenceLabel(row.signal.confidence_level)}`,
+      `   Why it matters: ${headline}`,
+      ...(bestFit ? [`   ${bestFit}`] : []),
       `   Contact: ${contactLabel(row.contact)}`,
       `   Best angle: ${bestAngleForSignalType(row.signal.signal_type)}`,
     ].join("\n");

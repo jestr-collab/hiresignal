@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   enrichCompany,
-  findContactsWithHunterFallback,
+  findContacts,
   type CompanyEnrichmentPatch,
 } from "@/lib/apollo";
 import { createServiceRoleClient } from "@/lib/supabase-service";
@@ -29,25 +29,12 @@ export async function POST(request: NextRequest) {
   }
 
   const apolloKey = process.env.APOLLO_API_KEY?.trim();
-  const hunterKey = process.env.HUNTER_API_KEY?.trim();
-  if (!apolloKey && !hunterKey) {
-    console.warn(
-      "[enrich] APOLLO_API_KEY and HUNTER_API_KEY are both unset — nothing to do"
-    );
+  if (!apolloKey) {
+    console.warn("[enrich] APOLLO_API_KEY is not set — nothing to do");
     return NextResponse.json({
       companiesEnriched: 0,
       contactsFound: 0,
     } satisfies EnrichSummary);
-  }
-  if (!apolloKey) {
-    console.warn(
-      "[enrich] APOLLO_API_KEY is not set — skipping company enrichment (Hunter contacts still run if configured)"
-    );
-  }
-  if (!hunterKey) {
-    console.warn(
-      "[enrich] HUNTER_API_KEY is not set — skipping contact lookup via Hunter"
-    );
   }
 
   let supabase;
@@ -155,7 +142,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { contacts, source } = await findContactsWithHunterFallback(
+    const contacts = await findContacts(
       domain,
       signal.signal_type,
       company.size_range ?? null
@@ -169,7 +156,7 @@ export async function POST(request: NextRequest) {
         email: c.email,
         linkedin_url: c.linkedin_url === "" ? "" : c.linkedin_url,
         seniority: c.seniority,
-        source,
+        source: "apollo",
       });
 
       if (insErr) {

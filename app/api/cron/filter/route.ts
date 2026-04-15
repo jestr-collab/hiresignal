@@ -4,6 +4,7 @@ import {
   buildSignalContext,
   capScore,
   classifyJob,
+  computeConfidenceLevel,
   computeEnterpriseFlag,
   computeWhyItMatters,
   isFirstBuilderHire,
@@ -12,7 +13,7 @@ import {
   type SignalType,
 } from "@/lib/filter";
 import { createServiceRoleClient } from "@/lib/supabase-service";
-import type { Job } from "@/types";
+import type { ConfidenceLevel, Job } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,140 @@ type FilterSummary = {
   signalsCreated: number;
   highIntentCompanies: number;
 };
+
+type SignalCleanupRow = {
+  id: string;
+  company_id: string | null;
+  week_of: string | null;
+  score: number | null;
+};
+
+const EXCLUDED_DOMAINS = new Set([
+  "salesforce.com",
+  "hubspot.com",
+  "pipedrive.com",
+  "freshsales.com",
+  "close.com",
+  "copper.com",
+  "nutshell.com",
+  "streak.com",
+  "capsulecrm.com",
+  "insightly.com",
+  "nimble.com",
+  "zoho.com",
+  "sugarcrm.com",
+  "vtiger.com",
+  "agilecrm.com",
+  "outreach.io",
+  "salesloft.com",
+  "apollo.io",
+  "reply.io",
+  "klenty.com",
+  "lemlist.com",
+  "mailshake.com",
+  "woodpecker.co",
+  "mixmax.com",
+  "yesware.com",
+  "groove.co",
+  "persistiq.com",
+  "autoklose.com",
+  "quickmail.io",
+  "frontspin.com",
+  "gong.io",
+  "chorus.ai",
+  "clari.com",
+  "avoma.com",
+  "jiminny.com",
+  "wingman.app",
+  "fireflies.ai",
+  "otter.ai",
+  "fathom.video",
+  "grain.com",
+  "tldv.io",
+  "modjo.fr",
+  "refract.ai",
+  "execvision.io",
+  "revenue.io",
+  "ringdna.com",
+  "highspot.com",
+  "showpad.com",
+  "mindtickle.com",
+  "seismic.com",
+  "brainshark.com",
+  "allego.com",
+  "mediafly.com",
+  "bigtincan.com",
+  "spekit.com",
+  "guru.com",
+  "bloomfire.com",
+  "lessonly.com",
+  "workramp.com",
+  "trainual.com",
+  "zoominfo.com",
+  "lusha.com",
+  "cognism.com",
+  "leadiq.com",
+  "uplead.com",
+  "seamless.ai",
+  "rocketreach.com",
+  "hunter.io",
+  "snov.io",
+  "contactout.com",
+  "kaspr.io",
+  "clearbit.com",
+  "clay.com",
+  "surfe.com",
+  "evaboot.com",
+  "dropcontact.com",
+  "getprospect.com",
+  "aircall.io",
+  "dialpad.com",
+  "kixie.com",
+  "orum.io",
+  "justcall.io",
+  "cloudtalk.io",
+  "talkdesk.com",
+  "five9.com",
+  "genesys.com",
+  "nice.com",
+  "vonage.com",
+  "ringcentral.com",
+  "natterbox.com",
+  "salescookie.com",
+  "xactlycorp.com",
+  "spiff.com",
+  "captivateiq.com",
+  "quotapath.com",
+  "everstage.com",
+  "performio.co",
+  "varicent.com",
+  "commissionly.io",
+  "chilipiper.com",
+  "chili-piper.com",
+  "bombora.com",
+  "6sense.com",
+  "demandbase.com",
+  "terminus.com",
+  "rollworks.com",
+  "metadata.io",
+  "salto.io",
+  "insidesales.com",
+  "xant.ai",
+]);
+
+function normalizeCompanyDomain(domain: string | null | undefined): string {
+  return (domain ?? "").trim().toLowerCase().replace(/^www\./, "");
+}
+
+function syncConfidenceWithFinalScore(
+  score: number,
+  confidence: ConfidenceLevel | null | undefined
+): ConfidenceLevel {
+  if (score >= 90) {
+    return confidence === "very_high" ? "very_high" : "high";
+  }
+  return confidence ?? "medium";
+}
 
 /** Monday (local) of the calendar week containing `date`, as YYYY-MM-DD for `signals.week_of`. */
 function mondayOfWeekLocal(date: Date): string {
@@ -109,11 +244,14 @@ export async function POST(request: NextRequest) {
     )
   );
 
-  const sizeRangeByCompanyId = new Map<string, string | null>();
+  const companyMetaByCompanyId = new Map<
+    string,
+    { name: string | null; size_range: string | null; domain: string | null }
+  >();
   if (affectedCompanyIds.length > 0) {
     const { data: companyRows, error: companyErr } = await supabase
       .from("companies")
-      .select("id, size_range")
+      .select("id, name, size_range, domain")
       .in("id", affectedCompanyIds);
 
     if (companyErr) {
@@ -121,12 +259,30 @@ export async function POST(request: NextRequest) {
     }
 
     for (const row of companyRows ?? []) {
-      const r = row as { id: string; size_range: string | null };
-      sizeRangeByCompanyId.set(r.id, r.size_range);
+      const r = row as {
+        id: string;
+        name: string | null;
+        size_range: string | null;
+        domain: string | null;
+      };
+      companyMetaByCompanyId.set(r.id, {
+        name: r.name,
+        size_range: r.size_range,
+        domain: r.domain,
+      });
     }
   }
 
   for (const companyId of affectedCompanyIds) {
+    const companyMeta = companyMetaByCompanyId.get(companyId);
+    const normalizedDomain = normalizeCompanyDomain(companyMeta?.domain);
+    if (EXCLUDED_DOMAINS.has(normalizedDomain)) {
+      console.warn(
+        `[filter] Skipping ${companyMeta?.name ?? normalizedDomain} — excluded domain (sales tool)`
+      );
+      continue;
+    }
+
     const companyJobs = allRecent.filter((j) => j.company_id === companyId);
 
     const classified: { job: Job; classification: JobClassification }[] = [];
@@ -170,7 +326,7 @@ export async function POST(request: NextRequest) {
 
     const detectedAt = new Date().toISOString();
     const rowsToInsert = [];
-    const companySizeRange = sizeRangeByCompanyId.get(companyId) ?? null;
+    const companySizeRange = companyMeta?.size_range ?? null;
 
     for (const [signalType, rows] of Array.from(byType.entries())) {
       const baseScores = rows.map((r) => r.classification.base_score);
@@ -189,10 +345,21 @@ export async function POST(request: NextRequest) {
       score = capScore(score);
 
       const why_it_matters = computeWhyItMatters(
+        companyId,
         signalType,
         jobCountForType,
         companySizeRange,
         countsByType
+      );
+      const confidence_level = computeConfidenceLevel(
+        signalType,
+        jobCountForType,
+        companySizeRange,
+        countsByType
+      );
+      const finalConfidenceLevel = syncConfidenceWithFinalScore(
+        score,
+        confidence_level
       );
 
       rowsToInsert.push({
@@ -205,6 +372,7 @@ export async function POST(request: NextRequest) {
         context,
         why_it_matters,
         enterprise_flag: computeEnterpriseFlag(companySizeRange),
+        confidence_level: finalConfidenceLevel,
         detected_at: detectedAt,
         is_new: true,
         week_of: weekOf,
@@ -224,7 +392,7 @@ export async function POST(request: NextRequest) {
     if ((contactCount ?? 0) === 0) {
       const { data: createdSignals, error: fetchSigErr } = await supabase
         .from("signals")
-        .select("id, score")
+        .select("id, score, confidence_level")
         .eq("company_id", companyId)
         .eq("week_of", weekOf);
 
@@ -233,11 +401,22 @@ export async function POST(request: NextRequest) {
       }
 
       for (const s of createdSignals ?? []) {
-        const row = s as { id: string; score: number | null };
+        const row = s as {
+          id: string;
+          score: number | null;
+          confidence_level: ConfidenceLevel | null;
+        };
         const nextScore = Math.max(0, (row.score ?? 0) - 20);
+        const nextConfidenceLevel = syncConfidenceWithFinalScore(
+          nextScore,
+          row.confidence_level
+        );
         const { error: penErr } = await supabase
           .from("signals")
-          .update({ score: nextScore })
+          .update({
+            score: nextScore,
+            confidence_level: nextConfidenceLevel,
+          })
           .eq("id", row.id);
         if (penErr) {
           return NextResponse.json({ error: penErr.message }, { status: 500 });
@@ -246,6 +425,43 @@ export async function POST(request: NextRequest) {
     }
 
     summary.signalsCreated += rowsToInsert.length;
+  }
+
+  const { data: cleanupSignals, error: cleanupFetchErr } = await supabase
+    .from("signals")
+    .select("id, company_id, week_of, score")
+    .eq("week_of", weekOf)
+    .not("company_id", "is", null)
+    .order("score", { ascending: false });
+
+  if (cleanupFetchErr) {
+    return NextResponse.json({ error: cleanupFetchErr.message }, { status: 500 });
+  }
+
+  const seenCompanyWeek = new Set<string>();
+  const duplicateIds: string[] = [];
+  for (const row of (cleanupSignals ?? []) as SignalCleanupRow[]) {
+    if (!row.company_id || !row.week_of) continue;
+    const key = `${row.company_id}:${row.week_of}`;
+    if (seenCompanyWeek.has(key)) {
+      duplicateIds.push(row.id);
+      continue;
+    }
+    seenCompanyWeek.add(key);
+  }
+
+  if (duplicateIds.length > 0) {
+    const { error: cleanupDeleteErr } = await supabase
+      .from("signals")
+      .delete()
+      .in("id", duplicateIds);
+
+    if (cleanupDeleteErr) {
+      return NextResponse.json(
+        { error: cleanupDeleteErr.message },
+        { status: 500 }
+      );
+    }
   }
 
   return NextResponse.json(summary);

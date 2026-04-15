@@ -8,6 +8,7 @@ export type SignalType =
   | "crm_admin";
 
 export type SignalStrength = "high" | "medium" | "low";
+export type ConfidenceLevel = "very_high" | "high" | "medium";
 
 export type JobClassification = {
   signal_type: SignalType;
@@ -188,49 +189,231 @@ export function computeEnterpriseFlag(
   return sizeRange?.trim() === "500+";
 }
 
-/**
- * One-line narrative per signal row; priority order matches product messaging.
- */
-export function computeWhyItMatters(
+function isSmallCompany(sizeRange: string | null | undefined): boolean {
+  const normalized = sizeRange?.trim();
+  return normalized === "1-50" || normalized === "51-200";
+}
+
+function companyVariantIndex(companyId: string | null | undefined): number {
+  const hex = (companyId ?? "").replace(/-/g, "").slice(0, 8);
+  const parsed = Number.parseInt(hex, 16);
+  if (Number.isNaN(parsed)) return 0;
+  return parsed % 3;
+}
+
+function timeframeForConfidence(
+  confidence: ConfidenceLevel,
+  signalType: SignalType
+): string {
+  if (confidence === "very_high") return "30 days";
+  if (confidence === "medium") return "60 days";
+  if (signalType === "revops" || signalType === "sales_enablement") {
+    return "45 days";
+  }
+  return "30 days";
+}
+
+export function computeConfidenceLevel(
   signalType: SignalType,
   jobCount: number,
   sizeRange: string | null | undefined,
   countsByType: Partial<Record<SignalType, number>>
-): string | null {
-  const smallCo =
-    sizeRange === "1-50" ||
-    sizeRange === "51-200"; /* 1–200 employees */
+): ConfidenceLevel {
   const hasSdr = (countsByType.sdr_team ?? 0) >= 1;
   const hasRev = (countsByType.revops ?? 0) >= 1;
   const bothSdrAndRev = hasSdr && hasRev;
 
   if (signalType === "cro") {
-    return "New CRO hired — rebuilding sales stack, actively evaluating CRM and revenue tooling";
+    return "very_high";
   }
 
   if (bothSdrAndRev && (signalType === "sdr_team" || signalType === "revops")) {
-    return "Standing up first outbound motion — likely evaluating sales engagement platforms and CRM tooling";
+    return "very_high";
   }
 
-  if (signalType === "vp_sales" && smallCo) {
-    return "Scaling sales org for first time — high intent buyer evaluating full GTM stack";
+  if (signalType === "vp_sales" && isSmallCompany(sizeRange)) {
+    return "very_high";
+  }
+
+  if (signalType === "sdr_team" && !hasRev && jobCount >= 2) {
+    return "high";
   }
 
   if (signalType === "ae_team" && jobCount >= 3) {
-    return "Scaling outbound SDR team — likely evaluating sales engagement platforms and CRM tooling";
+    return "high";
   }
 
   if (signalType === "revops" && !bothSdrAndRev) {
-    return "Operationalizing revenue team — evaluating RevOps and CRM tooling";
+    return "high";
   }
 
-  if (signalType === "sdr_team" && !bothSdrAndRev) {
-    return "Building outbound motion from scratch — evaluating sales engagement and sequencing tools";
+  if (signalType === "sales_enablement") {
+    return "high";
+  }
+
+  return "medium";
+}
+
+function buildWhy(headline: string, bestFit: string, timeframe: string): string {
+  return `${headline} (${timeframe})\nBest fit: ${bestFit}`;
+}
+
+/**
+ * One-line narrative per signal row; priority order matches product messaging.
+ */
+export function computeWhyItMatters(
+  companyId: string | null | undefined,
+  signalType: SignalType,
+  jobCount: number,
+  sizeRange: string | null | undefined,
+  countsByType: Partial<Record<SignalType, number>>
+): string | null {
+  const smallCo = isSmallCompany(sizeRange);
+  const hasSdr = (countsByType.sdr_team ?? 0) >= 1;
+  const hasRev = (countsByType.revops ?? 0) >= 1;
+  const bothSdrAndRev = hasSdr && hasRev;
+  const confidence = computeConfidenceLevel(
+    signalType,
+    jobCount,
+    sizeRange,
+    countsByType
+  );
+  const timeframe = timeframeForConfidence(confidence, signalType);
+  const variant = companyVariantIndex(companyId);
+
+  if (signalType === "cro") {
+    return buildWhy(
+      "New CRO hired → rebuilding sales stack",
+      "CRM, revenue intelligence, forecasting tools",
+      timeframe
+    );
+  }
+
+  if (bothSdrAndRev && (signalType === "sdr_team" || signalType === "revops")) {
+    return buildWhy(
+      "Standing up outbound from scratch → buying sales tools now",
+      "Sales engagement / sequencing (Outreach, Salesloft, Apollo)",
+      timeframe
+    );
+  }
+
+  if (signalType === "vp_sales" && smallCo) {
+    return buildWhy(
+      "First VP Sales hired → building GTM stack from zero",
+      "CRM + sales engagement bundle",
+      timeframe
+    );
+  }
+
+  if (signalType === "vp_sales") {
+    return buildWhy(
+      "New VP Sales hired → tightening sales process and tooling",
+      "CRM, forecasting, sales engagement tools",
+      timeframe
+    );
+  }
+
+  if (signalType === "sdr_team") {
+    if (variant === 0) {
+      return buildWhy(
+        "Scaling SDR team fast → likely buying sequencing tools",
+        "Sales engagement platforms (Outreach, Salesloft)",
+        timeframe
+      );
+    }
+    if (variant === 1) {
+      return buildWhy(
+        "Adding SDR headcount → new reps require faster ramp + tooling",
+        "Sales engagement / sequencing tools",
+        timeframe
+      );
+    }
+    return buildWhy(
+      "SDR team growing → needs pipeline tooling to support new hires",
+      "Outreach, Salesloft, Apollo",
+      timeframe
+    );
+  }
+
+  if (signalType === "revops" && !bothSdrAndRev) {
+    return buildWhy(
+      "Hiring RevOps → operationalizing revenue team",
+      "RevOps platforms, CRM optimization, BI tools",
+      timeframe
+    );
+  }
+
+  if (signalType === "sales_enablement") {
+    return buildWhy(
+      "Formalizing sales process → enablement stack needed",
+      "Sales enablement platforms (Highspot, Showpad, Mindtickle)",
+      timeframe
+    );
+  }
+
+  if (signalType === "ae_team" && jobCount >= 5) {
+    if (variant === 0) {
+      return buildWhy(
+        "Rapidly adding AEs → CRM seat expansion imminent",
+        "CRM, forecasting, deal management tools",
+        timeframe
+      );
+    }
+    if (variant === 1) {
+      return buildWhy(
+        "AE team scaling fast → new reps need tooling to hit quota fast",
+        "Sales coaching, enablement, CRM tools",
+        timeframe
+      );
+    }
+    return buildWhy(
+      "Headcount surge → new AEs need ramp support immediately",
+      "Sales enablement, CRM, forecasting tools",
+      timeframe
+    );
+  }
+
+  if (signalType === "ae_team" && jobCount >= 3) {
+    if (variant === 0) {
+      return buildWhy(
+        "Growing AE team → forecasting pressure increasing",
+        "CRM optimization, pipeline management tools",
+        timeframe
+      );
+    }
+    if (variant === 1) {
+      return buildWhy(
+        "Expanding AE headcount → needs more pipeline to support new reps",
+        "Sales engagement, prospecting tools",
+        timeframe
+      );
+    }
+    return buildWhy(
+      "Adding AEs → SDR pipeline pressure increasing",
+      "CRM seats, sales engagement tools",
+      timeframe
+    );
   }
 
   if (signalType === "ae_team") {
-    return "Expanding sales team — likely adding sales tooling to support growth";
+    return buildWhy(
+      "Adding AE capacity → likely evaluating CRM or sales tools",
+      "CRM, sales engagement tools",
+      timeframe
+    );
   }
 
-  return null;
+  if (signalType === "crm_admin") {
+    return buildWhy(
+      "Hiring CRM admin → optimizing sales systems",
+      "CRM tools, sales ops automation",
+      timeframe
+    );
+  }
+
+  return buildWhy(
+    "Growing sales team → evaluating sales tooling",
+    "CRM, sales engagement tools",
+    timeframe
+  );
 }

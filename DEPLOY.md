@@ -47,7 +47,6 @@ Add these in Railway under the service `Variables` tab.
 ### Contact enrichment
 
 - `APOLLO_API_KEY`
-- `HUNTER_API_KEY`
 
 ### Email digest
 

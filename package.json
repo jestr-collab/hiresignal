@@ -15,6 +15,7 @@
     "validate-urls": "ts-node scripts/validate-urls.ts",
     "add-company": "ts-node scripts/add-company.ts",
     "test-url": "ts-node scripts/test-url.ts",
+    "discover": "ts-node scripts/discover-companies-apollo.ts",
     "digest:test": "curl -X POST http://localhost:3001/api/cron/digest -H 'Content-Type: application/json' -H 'x-cron-secret: mysecretkey123'",
     "cron:run": "ts-node scripts/cron-runner.ts"
   },

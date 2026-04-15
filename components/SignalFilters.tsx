@@ -37,17 +37,6 @@ export function SignalFilters({
         >
           <button
             type="button"
-            onClick={() => onPresetChange("all")}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              preset === "all"
-                ? "bg-white text-neutral-900 shadow-sm"
-                : "text-neutral-600 hover:text-neutral-900"
-            }`}
-          >
-            All signals
-          </button>
-          <button
-            type="button"
             onClick={() => onPresetChange("winnable")}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               preset === "winnable"
@@ -56,6 +45,17 @@ export function SignalFilters({
             }`}
           >
             Winnable now
+          </button>
+          <button
+            type="button"
+            onClick={() => onPresetChange("all")}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              preset === "all"
+                ? "bg-white text-neutral-900 shadow-sm"
+                : "text-neutral-600 hover:text-neutral-900"
+            }`}
+          >
+            All signals
           </button>
         </div>
       </div>

@@ -1,3 +1,5 @@
+import type { ConfidenceLevel } from "@/types";
+
 /** Calendar date `days` ago as YYYY-MM-DD (for `week_of` range filters). */
 export function isoDateDaysAgo(days: number, from: Date = new Date()): string {
   const d = new Date(from);
@@ -36,6 +38,34 @@ export function scoreIntentClass(score: number | null | undefined): string {
   if (s >= 90) return "text-emerald-700 bg-emerald-50";
   if (s >= 70) return "text-amber-800 bg-amber-50";
   return "text-neutral-600 bg-neutral-100";
+}
+
+export function confidenceLabel(
+  level: ConfidenceLevel | string | null | undefined
+): string {
+  switch (level) {
+    case "very_high":
+      return "Very high intent";
+    case "high":
+      return "High intent";
+    case "medium":
+    default:
+      return "Medium intent";
+  }
+}
+
+export function confidenceBadgeClass(
+  level: ConfidenceLevel | string | null | undefined
+): string {
+  switch (level) {
+    case "very_high":
+      return "border border-[#F09595] bg-[#FCEBEB] text-[#A32D2D]";
+    case "high":
+      return "border border-[#EF9F27] bg-[#FAEEDA] text-[#854F0B]";
+    case "medium":
+    default:
+      return "border-[0.5px] border-[#D7D3CA] bg-[#F1EFE8] text-[#5F5E5A]";
+  }
 }
 
 export const FILTER_SIGNAL_TYPES = [

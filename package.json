@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "postinstall": "npx playwright install chromium --with-deps",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

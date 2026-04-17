@@ -18,7 +18,10 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "HireSignal",
-  description: "Hiring signal intelligence for B2B SaaS sales teams.",
+  description: "Weekly buying signals for sales teams",
+  icons: {
+    icon: "/logo.png",
+  },
 };
 
 export default function RootLayout({

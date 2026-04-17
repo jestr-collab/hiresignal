@@ -19,6 +19,10 @@ function skipTrialRedirect(pathname: string): boolean {
   );
 }
 
+function isRootPath(pathname: string): boolean {
+  return pathname === "/" || pathname === "";
+}
+
 /**
  * Returns true only when the subscriber row clearly indicates an expired trial.
  * Never throws; on any failure logs and returns false (fail open).
@@ -67,6 +71,27 @@ async function trialExpiredForUser(clerkUserId: string): Promise<boolean> {
 }
 
 export default clerkMiddleware(async (auth, req) => {
+  const pathname = req.nextUrl.pathname;
+
+  // Marketing landing at / for guests; signed-in users still get trial enforcement
+  if (isRootPath(pathname)) {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.next();
+    }
+    await auth.protect();
+    let shouldRedirectToUpgrade = false;
+    try {
+      shouldRedirectToUpgrade = await trialExpiredForUser(userId);
+    } catch (e) {
+      console.error("[middleware] Trial redirect branch failed (fail open):", e);
+    }
+    if (shouldRedirectToUpgrade) {
+      return NextResponse.redirect(new URL("/upgrade", req.url));
+    }
+    return NextResponse.next();
+  }
+
   if (isPublicRoute(req)) {
     return NextResponse.next();
   }
@@ -78,7 +103,6 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next();
   }
 
-  const pathname = req.nextUrl.pathname;
   if (skipTrialRedirect(pathname)) {
     return NextResponse.next();
   }

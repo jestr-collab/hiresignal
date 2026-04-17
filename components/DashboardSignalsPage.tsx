@@ -78,7 +78,7 @@ function LoadingSpinner() {
   );
 }
 
-export default function DashboardPage() {
+export function DashboardSignalsPage() {
   const minWeekOf = useMemo(() => isoDateDaysAgo(28), []);
   const [rows, setRows] = useState<DashboardTableRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -174,10 +174,7 @@ export default function DashboardPage() {
       }
       const sc = r.signal.score ?? 0;
       if (filters.scoreBand === "high" && sc < 80) return false;
-      if (
-        filters.scoreBand === "medium" &&
-        (sc < 60 || sc > 79)
-      ) {
+      if (filters.scoreBand === "medium" && (sc < 60 || sc > 79)) {
         return false;
       }
       if (filters.search.trim()) {

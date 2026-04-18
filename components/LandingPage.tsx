@@ -431,17 +431,17 @@ export function LandingPage() {
         </section>
 
         {/* Section 8 — Final CTA */}
-        <section className="bg-[#0A0A0A] px-4 py-16 text-center sm:px-6 sm:py-20">
+        <section className="border-t border-[#F3F4F6] bg-[#F9FAFB] px-4 py-16 text-center sm:px-6 sm:py-20">
           <div className="mx-auto max-w-2xl">
-            <h2 className="text-2xl font-bold leading-tight text-white sm:text-3xl md:text-4xl">
+            <h2 className="text-2xl font-bold leading-tight text-[#0A0A0A] sm:text-3xl md:text-4xl">
               Your next customer is hiring right now.
             </h2>
-            <p className="mt-4 text-base text-neutral-300 sm:text-lg">
+            <p className="mt-4 text-base text-[#6B7280] sm:text-lg">
               Find out who before your competitors do.
             </p>
             <Link
               href="/sign-up"
-              className="mt-8 inline-flex items-center justify-center rounded-lg bg-[#16A34A] px-8 py-3.5 text-sm font-semibold text-white transition hover:bg-[#15803d] sm:text-base"
+              className="mt-8 inline-flex items-center justify-center rounded-lg bg-[#0A0A0A] px-8 py-3.5 text-sm font-semibold text-white transition hover:bg-[#262626] sm:text-base"
             >
               Start free trial
             </Link>

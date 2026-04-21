@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { sendPaymentFailedEmail } from "@/lib/email";
 import { createServiceRoleClient } from "@/lib/supabase-service";
 
 export const dynamic = "force-dynamic";
@@ -114,6 +115,54 @@ export async function POST(request: NextRequest) {
         if (error) {
           console.error("[stripe webhook] Supabase cancel update failed:", error.message);
           return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+        break;
+      }
+
+      case "invoice.payment_failed": {
+        const invoice = event.data.object as Stripe.Invoice;
+        const customerId =
+          typeof invoice.customer === "string"
+            ? invoice.customer
+            : invoice.customer?.id ?? null;
+
+        if (!customerId) {
+          console.error(
+            "[stripe webhook] invoice.payment_failed missing customer id"
+          );
+          break;
+        }
+
+        const { data: subRow } = await supabase
+          .from("subscribers")
+          .select("email")
+          .eq("stripe_customer_id", customerId)
+          .maybeSingle();
+
+        const { error: pastDueErr } = await supabase
+          .from("subscribers")
+          .update({ plan: "past_due" })
+          .eq("stripe_customer_id", customerId);
+
+        if (pastDueErr) {
+          console.error(
+            "[stripe webhook] past_due update failed:",
+            pastDueErr.message
+          );
+          return NextResponse.json({ error: pastDueErr.message }, { status: 500 });
+        }
+
+        const email = subRow?.email?.trim();
+        if (email && process.env.RESEND_API_KEY?.trim()) {
+          try {
+            const appUrl =
+              process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+              "http://localhost:3000";
+            await sendPaymentFailedEmail(email, appUrl);
+          } catch (err) {
+            console.error("[stripe webhook] payment failed email:", err);
+            return NextResponse.json({ error: "Email send failed" }, { status: 500 });
+          }
         }
         break;
       }

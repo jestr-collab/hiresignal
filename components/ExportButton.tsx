@@ -1,9 +1,12 @@
 "use client";
 
+import type { Company } from "@/types";
 import {
+  confidenceLabel,
   daysAgoLabel,
   escapeCsvCell,
   fundingSummary,
+  mondayOfWeekLocalString,
 } from "@/lib/dashboard-utils";
 import type { DashboardTableRow } from "@/components/SignalTable";
 
@@ -17,6 +20,41 @@ function contactNameParts(c: DashboardTableRow["contact"]) {
   };
 }
 
+/** Prefer Greenhouse when both exist. */
+function jobBoardUrl(company: Company): string {
+  const g = company.greenhouse_url?.trim();
+  const l = company.lever_url?.trim();
+  if (g) return g;
+  if (l) return l;
+  return "";
+}
+
+function signalSummaryText(
+  context: string | null | undefined,
+  signalType: string
+): string {
+  if (context?.trim()) return context.trim();
+  return `Hiring signal: ${signalType.replace(/_/g, " ")}`;
+}
+
+/** First line = Why Now; second line = Best fit (strip optional "Best fit:" prefix). */
+function whyMattersParts(why: string | null | undefined): {
+  whyNow: string;
+  bestFit: string;
+} {
+  const lines = (why ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const whyNow = lines[0] ?? "";
+  let bestFit = "";
+  if (lines.length > 1) {
+    const line = lines[1];
+    bestFit = line.replace(/^Best fit:\s*/i, "").trim() || line;
+  }
+  return { whyNow, bestFit };
+}
+
 type Props = {
   rows: DashboardTableRow[];
   disabled?: boolean;
@@ -24,11 +62,18 @@ type Props = {
 
 export function ExportButton({ rows, disabled }: Props) {
   function download() {
+    const weekOf =
+      rows[0]?.signal.week_of?.trim() || mondayOfWeekLocalString(new Date());
+
     const header = [
       "Company",
-      "Domain",
+      "Size",
       "Signal",
+      "Why Now",
+      "Best Fit",
       "Score",
+      "Confidence",
+      "Job Board URL",
       "Contact Name",
       "Contact Title",
       "Email",
@@ -38,14 +83,16 @@ export function ExportButton({ rows, disabled }: Props) {
     const lines = [header.map(escapeCsvCell).join(",")];
     for (const { signal, company, contact } of rows) {
       const { name, title, email } = contactNameParts(contact);
-      const signalText =
-        signal.context ??
-        `Signal: ${signal.signal_type.replace(/_/g, " ")}`;
+      const { whyNow, bestFit } = whyMattersParts(signal.why_it_matters);
       const row = [
         company.name,
-        company.domain,
-        signalText,
+        company.size_range ?? "",
+        signalSummaryText(signal.context, signal.signal_type),
+        whyNow,
+        bestFit,
         String(signal.score ?? ""),
+        confidenceLabel(signal.confidence_level),
+        jobBoardUrl(company),
         name,
         title,
         email,
@@ -54,13 +101,15 @@ export function ExportButton({ rows, disabled }: Props) {
       ].map((cell) => escapeCsvCell(cell ?? ""));
       lines.push(row.join(","));
     }
-    const blob = new Blob([lines.join("\r\n")], {
-      type: "text/csv;charset=utf-8",
+    const csv = lines.join("\r\n");
+    const BOM = "\uFEFF";
+    const blob = new Blob([BOM + csv], {
+      type: "text/csv;charset=utf-8;",
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `hiresignal-signals-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `hiresignal-week-of-${weekOf}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }

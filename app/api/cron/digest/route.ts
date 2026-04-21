@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sendWeeklyDigest, type WeeklyDigestSignal } from "@/lib/email";
+import {
+  sendTrialEndingReminder,
+  sendWeeklyDigest,
+  type WeeklyDigestSignal,
+} from "@/lib/email";
 import { mondayOfWeekLocalString } from "@/lib/dashboard-utils";
 import { createServiceRoleClient } from "@/lib/supabase-service";
 import type { Company, Contact, Signal, Subscriber } from "@/types";
@@ -49,6 +53,35 @@ export async function POST(request: NextRequest) {
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3000";
 
+  const now = new Date();
+  const inThreeDays = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  const { data: trialsEnding, error: trialErr } = await supabase
+    .from("subscribers")
+    .select("*")
+    .eq("plan", "trial")
+    .gte("trial_ends_at", now.toISOString())
+    .lte("trial_ends_at", inThreeDays.toISOString());
+
+  if (trialErr) {
+    return NextResponse.json({ error: trialErr.message }, { status: 500 });
+  }
+
+  let trialRemindersSent = 0;
+  for (const sub of trialsEnding ?? []) {
+    const em = sub.email?.trim();
+    if (!em || !sub.trial_ends_at) continue;
+    const endMs = new Date(sub.trial_ends_at).getTime();
+    const daysRemaining = (endMs - now.getTime()) / (24 * 60 * 60 * 1000);
+    if (daysRemaining <= 0) continue;
+    try {
+      await sendTrialEndingReminder(em, daysRemaining, appUrl);
+      trialRemindersSent += 1;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[digest] Trial reminder failed for ${em}: ${message}`);
+    }
+  }
+
   const weekOf = mondayOfWeekLocalString(new Date());
 
   const { data: subscriberRows, error: subscriberErr } = await supabase
@@ -66,6 +99,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       subscribersEmailed: 0,
       signalsSent: 0,
+      trialRemindersSent,
     });
   }
 
@@ -109,6 +143,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       subscribersEmailed: 0,
       signalsSent: 0,
+      trialRemindersSent,
     });
   }
 
@@ -141,5 +176,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     subscribersEmailed,
     signalsSent: rows.length,
+    trialRemindersSent,
   });
 }

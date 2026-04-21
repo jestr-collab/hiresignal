@@ -199,3 +199,105 @@ export async function sendWeeklyDigest(
     throw new Error(error.message);
   }
 }
+
+export async function sendPaymentFailedEmail(
+  subscriberEmail: string,
+  appUrl: string
+): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("Missing RESEND_API_KEY");
+  }
+
+  const base = normalizeAppUrl(appUrl);
+  const resend = new Resend(apiKey);
+  const subject = "Action needed: your HireSignal payment didn’t go through";
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <body style="margin:0;padding:24px;font-family:system-ui,sans-serif;background:#fafafa;color:#171717;">
+        <div style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:28px;">
+          <p style="margin:0 0 12px;font-size:15px;line-height:1.5;">We couldn’t process your last subscription payment. Your account is marked <strong>past due</strong> until billing succeeds.</p>
+          <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#525252;">Update your payment method in the billing portal to keep access to signals and digests.</p>
+          <a href="${escapeHtml(base)}/api/stripe/portal" style="display:inline-block;background:#171717;color:#fff;text-decoration:none;border-radius:10px;padding:12px 18px;font-size:14px;font-weight:600;">Manage billing →</a>
+        </div>
+      </body>
+    </html>
+  `;
+
+  const text = [
+    "We couldn’t process your last HireSignal subscription payment.",
+    "Your plan is past due until payment succeeds.",
+    "",
+    `Manage billing: ${base}/api/stripe/portal`,
+  ].join("\n");
+
+  const { error } = await resend.emails.send({
+    from: fromEmail(),
+    to: subscriberEmail,
+    subject,
+    html,
+    text,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function sendTrialEndingReminder(
+  subscriberEmail: string,
+  daysRemaining: number,
+  appUrl: string
+): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("Missing RESEND_API_KEY");
+  }
+
+  const base = normalizeAppUrl(appUrl);
+  const resend = new Resend(apiKey);
+  const d = Math.max(1, Math.ceil(daysRemaining));
+  const subject = `Your HireSignal trial ends in ${d} day${d === 1 ? "" : "s"}`;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <body style="margin:0;padding:24px;font-family:system-ui,sans-serif;background:#fafafa;color:#171717;">
+        <div style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:28px;">
+          <p style="margin:0 0 12px;font-size:16px;font-weight:600;">Your trial is ending soon</p>
+          <p style="margin:0 0 12px;font-size:15px;line-height:1.5;color:#404040;">In about <strong>${d} day${d === 1 ? "" : "s"}</strong>, you’ll lose access to weekly hiring signals, verified VP-level contacts, and the Monday digest.</p>
+          <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#525252;">Subscribe to keep full access and stay ahead of your competitors.</p>
+          <a href="${escapeHtml(base)}/upgrade" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;border-radius:10px;padding:12px 18px;font-size:14px;font-weight:600;">Subscribe now →</a>
+          <p style="margin:20px 0 0;font-size:12px;color:#737373;">Already subscribed? You can ignore this email.</p>
+        </div>
+      </body>
+    </html>
+  `;
+
+  const text = [
+    `Your HireSignal trial ends in about ${d} day${d === 1 ? "" : "s"}.`,
+    "",
+    "Without an active plan you’ll lose:",
+    "- Weekly buying signals",
+    "- Verified contacts",
+    "- Monday email digest",
+    "",
+    `Subscribe: ${base}/upgrade`,
+    "",
+    "(If you already subscribed, ignore this message.)",
+  ].join("\n");
+
+  const { error } = await resend.emails.send({
+    from: fromEmail(),
+    to: subscriberEmail,
+    subject,
+    html,
+    text,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}

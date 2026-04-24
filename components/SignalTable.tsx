@@ -1,13 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   bestAngleForSignalType,
-  confidenceBadgeClass,
-  confidenceLabel,
+  companyInitials,
   daysAgoLabel,
   fundingSummary,
+  intentTagShort,
 } from "@/lib/dashboard-utils";
 import type { Company, Contact, Signal } from "@/types";
 
@@ -19,21 +19,14 @@ export type DashboardTableRow = {
 
 type Props = {
   rows: DashboardTableRow[];
+  /** Total companies in view before list filters (for footer “of N”). */
+  totalRowCount: number;
 };
-
-const COL_COUNT = 6;
 
 function contactName(c: Contact | null): string {
   if (!c) return "—";
   const parts = [c.first_name, c.last_name].filter(Boolean);
   return parts.length ? parts.join(" ") : "—";
-}
-
-function confidenceText(level: Signal["confidence_level"]): string {
-  if (level === "medium") {
-    return `· ${confidenceLabel(level)}`;
-  }
-  return confidenceLabel(level);
 }
 
 function isEnterpriseRow(row: DashboardTableRow): boolean {
@@ -59,7 +52,45 @@ function bestFitPillText(value: string | null): string | null {
   return value.startsWith("Best fit:") ? value : `Best fit: ${value}`;
 }
 
-export function SignalTable({ rows }: Props) {
+function intentClass(level: Signal["confidence_level"]): string {
+  switch (level) {
+    case "very_high":
+      return "dash-intent-vh";
+    case "high":
+      return "dash-intent-h";
+    case "medium":
+    default:
+      return "dash-intent-m";
+  }
+}
+
+function useMeterInView() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const e = entries[0];
+        if (e?.isIntersecting) {
+          setInView(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.2 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return [ref, inView] as const;
+}
+
+function signalTypeFallback(signalType: string): string {
+  return signalType.replace(/_/g, " ");
+}
+
+export function SignalTable({ rows, totalRowCount }: Props) {
   const [copied, setCopied] = useState<string | null>(null);
 
   const copyEmail = useCallback((email: string) => {
@@ -83,58 +114,58 @@ export function SignalTable({ rows }: Props) {
 
   if (rows.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-neutral-200 bg-white px-6 py-12 text-center text-sm text-neutral-500">
-        No signals match your filters for this week.
+      <div className="dash-table-wrap">
+        <div className="dash-empty dash-empty--in-table">
+          No signals match your filters for this week.
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white shadow-sm">
-      <table className="w-full min-w-[980px] border-collapse text-left text-sm">
-        <thead>
-          <tr className="border-b border-neutral-200 bg-neutral-50 text-xs font-medium uppercase tracking-wide text-neutral-500">
-            <th className="px-4 py-3">Company</th>
-            <th className="px-4 py-3">Signal</th>
-            <th className="px-4 py-3">Score</th>
-            <th className="px-4 py-3">Contact</th>
-            <th className="px-4 py-3">Funding</th>
-            <th className="px-4 py-3">Detected</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-neutral-100">
-          {nonEnterprise.map(({ signal, company, contact }) => (
-            <SignalTableRow
-              key={signal.id}
-              signal={signal}
-              company={company}
-              contact={contact}
-              copied={copied}
-              onCopyEmail={copyEmail}
-            />
-          ))}
-          {showEnterpriseDivider ? (
-            <tr className="bg-neutral-50/90">
-              <td
-                colSpan={COL_COUNT}
-                className="border-y border-neutral-200 px-4 py-3 text-xs font-medium uppercase tracking-wide text-neutral-500"
-              >
-                Enterprise opportunities — longer sales cycles
-              </td>
-            </tr>
-          ) : null}
-          {enterprise.map(({ signal, company, contact }) => (
-            <SignalTableRow
-              key={signal.id}
-              signal={signal}
-              company={company}
-              contact={contact}
-              copied={copied}
-              onCopyEmail={copyEmail}
-            />
-          ))}
-        </tbody>
-      </table>
+    <div className="dash-table-wrap">
+      <div className="dash-th-row">
+        <span className="dash-th">Company</span>
+        <span className="dash-th">Signal</span>
+        <span className="dash-th">Score</span>
+        <span className="dash-th">Contact</span>
+        <span className="dash-th">Funding</span>
+        <span className="dash-th">Detected</span>
+        <span />
+      </div>
+      {nonEnterprise.map(({ signal, company, contact }, i) => (
+        <SignalGridRow
+          key={signal.id}
+          signal={signal}
+          company={company}
+          contact={contact}
+          copied={copied}
+          onCopyEmail={copyEmail}
+          index={i}
+        />
+      ))}
+      {showEnterpriseDivider ? (
+        <div className="dash-enterprise-label">
+          Enterprise opportunities — longer sales cycles
+        </div>
+      ) : null}
+      {enterprise.map(({ signal, company, contact }, i) => (
+        <SignalGridRow
+          key={signal.id}
+          signal={signal}
+          company={company}
+          contact={contact}
+          copied={copied}
+          onCopyEmail={copyEmail}
+          index={nonEnterprise.length + i}
+        />
+      ))}
+      <div className="dash-list-foot">
+        Showing {rows.length} of {totalRowCount}
+        {rows.length < totalRowCount
+          ? " · Adjust filters to see more"
+          : null}
+      </div>
     </div>
   );
 }
@@ -145,119 +176,170 @@ type RowProps = {
   contact: Contact | null;
   copied: string | null;
   onCopyEmail: (email: string) => void;
+  index: number;
 };
 
-function SignalTableRow({
+function SignalGridRow({
   signal,
   company,
   contact,
   copied,
   onCopyEmail,
+  index,
 }: RowProps) {
+  const router = useRouter();
+  const [meterRef, meterInView] = useMeterInView();
   const score = signal.score ?? 0;
   const email = contact?.email?.trim();
   const { headline, bestFit } = splitWhyItMatters(signal.why_it_matters);
   const bestFitText = bestFitPillText(bestFit);
   const angle = bestAngleForSignalType(signal.signal_type);
+  const detected = daysAgoLabel(signal.detected_at);
+  const fresh = detected === "Today";
+
+  const go = () => {
+    router.push(`/signal/${signal.id}`);
+  };
+
   return (
-    <tr className="hover:bg-neutral-50/80">
-      <td className="px-4 py-3 align-top">
-        <Link
-          href={`/signal/${signal.id}`}
-          className="font-medium text-neutral-900 hover:underline"
-        >
-          {company.name}
-        </Link>
-        {company.size_range ? (
-          <span className="ml-2 inline-block rounded bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
-            {company.size_range}
-          </span>
-        ) : null}
-        {signal.enterprise_flag ? (
-          <span className="ml-2 inline-block rounded border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] text-neutral-500">
-            Enterprise · long cycle
-          </span>
-        ) : null}
-      </td>
-      <td className="max-w-xs px-4 py-3 align-top text-neutral-700">
+    <div
+      className="dash-row"
+      style={{ animationDelay: `${index * 40}ms` }}
+      role="link"
+      tabIndex={0}
+      onClick={go}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          go();
+        }
+      }}
+    >
+      <div className="dash-col-co">
+        <div className="dash-co-logo" aria-hidden>
+          {companyInitials(company.name)}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div className="dash-co-name">{company.name}</div>
+          {company.size_range ? (
+            <span className="dash-co-size">{company.size_range}</span>
+          ) : null}
+          {signal.enterprise_flag ? (
+            <span className="dash-ent-badge">Enterprise · long cycle</span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="dash-col-signal">
         {headline ? (
-          <p className="mb-[6px] text-[17px] font-semibold leading-[1.4] text-neutral-950">
-            {headline}
-          </p>
+          <div className="dash-signal-head">{headline}</div>
         ) : null}
         {bestFitText ? (
-          <span
-            className="mb-[6px] mt-1 inline-block rounded-[20px] px-2.5 py-[3px] text-xs font-medium"
-            style={{ backgroundColor: "#E1F5EE", color: "#0F6E56" }}
-          >
+          <div className="dash-signal-fit">
+            <svg
+              className="icon"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              aria-hidden
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
             {bestFitText}
-          </span>
+          </div>
         ) : null}
-        <div className="mt-1 text-xs leading-snug text-neutral-500">
+        <div className="dash-signal-meta">
           {signal.context ?? signalTypeFallback(signal.signal_type)}
         </div>
-      </td>
-      <td className="px-4 py-3 align-top">
-        <div className="flex items-center gap-0.5">
-          <span className="inline-flex text-[20px] font-semibold leading-none text-neutral-950 tabular-nums">
-            {score}
-          </span>
+      </div>
+
+      <div className="dash-col-score" ref={meterRef}>
+        <div className="dash-score-top">
+          <span className="dash-score-big">{score}</span>
           {signal.confidence_level ? (
             <span
-              className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium leading-none ${confidenceBadgeClass(signal.confidence_level)}`}
+              className={`dash-intent-tag ${intentClass(signal.confidence_level)}`}
             >
-              {confidenceText(signal.confidence_level)}
+              {intentTagShort(signal.confidence_level)}
             </span>
           ) : null}
         </div>
-      </td>
-      <td className="max-w-[220px] px-4 py-3 align-top text-neutral-700">
+        <div className="dash-score-meter">
+          <span
+            className="dash-score-meter-fill"
+            style={{ width: meterInView ? `${Math.min(100, score)}%` : "0%" }}
+          />
+        </div>
+      </div>
+
+      <div className="dash-col-contact">
         {contact ? (
-          <div className="space-y-1">
-            <div className="text-[14px] font-semibold text-neutral-900">
-              {contactName(contact)}
-            </div>
+          <>
+            <div className="dash-contact-name">{contactName(contact)}</div>
             {contact.title ? (
-              <div className="text-xs text-neutral-500">{contact.title}</div>
+              <div className="dash-contact-role">{contact.title}</div>
             ) : null}
             {email ? (
               <button
                 type="button"
-                onClick={() => onCopyEmail(email)}
-                className="block w-full truncate text-left text-xs text-teal-700 hover:underline"
-                title="Copy email"
+                className="dash-contact-email"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCopyEmail(email);
+                }}
               >
                 {copied === email ? "Copied!" : email}
               </button>
             ) : (
-              <span className="text-xs text-neutral-400">No email</span>
+              <span className="dash-muted" style={{ fontSize: 12 }}>
+                No email
+              </span>
             )}
-            <div className="text-[11px] italic text-neutral-400">
-              {angle}
-            </div>
-          </div>
+            <div className="dash-angle">{angle}</div>
+          </>
         ) : (
-          <div className="space-y-1.5">
-            <span className="text-neutral-400">—</span>
-            <span className="inline-block rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] leading-tight text-neutral-500">
+          <>
+            <span className="dash-muted">—</span>
+            <div
+              className="dash-signal-fit"
+              style={{ marginTop: 6, fontSize: 10 }}
+            >
               No sales contact found
-            </span>
-            <div className="text-[11px] italic text-neutral-400">
-              {angle}
             </div>
-          </div>
+            <div className="dash-angle">{angle}</div>
+          </>
         )}
-      </td>
-      <td className="max-w-[180px] px-4 py-3 align-top text-[11px] text-neutral-400">
-        {fundingSummary(company.funding_stage, company.funding_amount)}
-      </td>
-      <td className="whitespace-nowrap px-4 py-3 align-top text-[11px] text-neutral-400">
-        {daysAgoLabel(signal.detected_at)}
-      </td>
-    </tr>
-  );
-}
+      </div>
 
-function signalTypeFallback(signalType: string): string {
-  return signalType.replace(/_/g, " ");
+      <div className="dash-col-funding">
+        {fundingSummary(company.funding_stage, company.funding_amount) ===
+        "—" ? (
+          <span className="dash-muted">—</span>
+        ) : (
+          fundingSummary(company.funding_stage, company.funding_amount)
+        )}
+      </div>
+
+      <div className={`dash-col-detected${fresh ? " fresh" : ""}`}>
+        {detected}
+      </div>
+
+      <div className="dash-row-arrow" aria-hidden>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+      </div>
+    </div>
+  );
 }

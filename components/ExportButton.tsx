@@ -58,9 +58,10 @@ function whyMattersParts(why: string | null | undefined): {
 type Props = {
   rows: DashboardTableRow[];
   disabled?: boolean;
+  className?: string;
 };
 
-export function ExportButton({ rows, disabled }: Props) {
+export function ExportButton({ rows, disabled, className }: Props) {
   function download() {
     const weekOf =
       rows[0]?.signal.week_of?.trim() || mondayOfWeekLocalString(new Date());
@@ -114,13 +115,30 @@ export function ExportButton({ rows, disabled }: Props) {
     URL.revokeObjectURL(url);
   }
 
+  const defaultClass =
+    "inline-flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50";
+
   return (
     <button
       type="button"
       onClick={download}
       disabled={disabled || rows.length === 0}
-      className="rounded-md border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+      className={className ?? defaultClass}
     >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        aria-hidden
+      >
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+      </svg>
       Export CSV
     </button>
   );

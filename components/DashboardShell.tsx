@@ -1,34 +1,60 @@
+"use client";
+
 import { SyncSubscriber } from "@/components/SyncSubscriber";
 import { UserButton } from "@clerk/nextjs";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import "../app/dashboard.css";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const signalsActive =
+    pathname === "/" || pathname.startsWith("/signal");
+
   return (
-    <div className="min-h-screen bg-neutral-50">
+    <div className="dashboard-skin">
       <SyncSubscriber />
-      <header className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-          <Link
-            href="/"
-            className="flex items-center gap-2 text-sm font-semibold tracking-tight text-neutral-900"
-          >
-            <Image
-              src="/logo.png"
-              alt="HireSignal"
-              width={1536}
-              height={1024}
-              className="h-16 w-auto shrink-0 object-contain"
-              sizes="128px"
-              quality={100}
-              priority
-            />
+      <header className="dash-nav">
+        <div className="dash-nav-inner">
+          <Link href="/" className="dash-brand">
+            <span className="dash-brand-mark">
+              <Image
+                src="/logo.png"
+                alt=""
+                width={1536}
+                height={1024}
+                className="h-8 w-auto max-w-[32px] object-contain"
+                sizes="32px"
+                quality={95}
+                priority
+              />
+            </span>
             HireSignal
           </Link>
-          <UserButton afterSignOutUrl="/sign-in" />
+          <nav className="dash-nav-tabs" aria-label="Primary">
+            <Link
+              href="/"
+              className={`dash-nav-tab${signalsActive ? " is-active" : ""}`}
+            >
+              Signals
+            </Link>
+            <button type="button" className="dash-nav-tab" disabled>
+              Exports
+            </button>
+            <button type="button" className="dash-nav-tab" disabled>
+              Settings
+            </button>
+          </nav>
+          <div className="dash-nav-right">
+            <a className="dash-billing" href="/api/stripe/portal">
+              Manage billing
+            </a>
+            <UserButton afterSignOutUrl="/sign-in" />
+          </div>
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+      <main>{children}</main>
     </div>
   );
 }

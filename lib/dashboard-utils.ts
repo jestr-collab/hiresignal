@@ -147,3 +147,33 @@ export function escapeCsvCell(value: string): string {
   }
   return value;
 }
+
+/** Two-letter avatar from company name (first letters of two words, else first two chars). */
+export function companyInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    const a = words[0]!.charAt(0);
+    const b = words[1]!.charAt(0);
+    return (a + b).toUpperCase();
+  }
+  const w = words[0] ?? "?";
+  if (w.length >= 2) return w.slice(0, 2).toUpperCase();
+  const c = w.charAt(0).toUpperCase();
+  return (c + c).slice(0, 2);
+}
+
+/** Short intent label for compact UI (matches design mock). */
+export function intentTagShort(
+  level: ConfidenceLevel | string | null | undefined
+): string {
+  switch (level) {
+    case "very_high":
+      return "Very high";
+    case "high":
+      return "High";
+    case "medium":
+      return "Medium";
+    default:
+      return "Medium";
+  }
+}

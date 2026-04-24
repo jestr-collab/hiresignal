@@ -11,6 +11,8 @@ export type SignalFiltersState = {
   signalType: string;
   scoreBand: string;
   search: string;
+  /** Toggled from the “Very high intent” stat card. */
+  veryHighOnly: boolean;
 };
 
 type Props = {

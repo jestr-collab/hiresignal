@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect } from "react";
-import { confidenceBadgeClass } from "@/lib/dashboard-utils";
+import { useState, useEffect, useRef, type ReactNode } from "react";
+import "../app/landing.css";
 
 function useSmoothScroll() {
   useEffect(() => {
@@ -16,126 +16,685 @@ function useSmoothScroll() {
   }, []);
 }
 
-function IconCalendar({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      aria-hidden
-    >
-      <rect x="3" y="4" width="18" height="18" rx="2" />
-      <path d="M16 2v4M8 2v4M3 10h18" />
-    </svg>
-  );
+function fireConfetti() {
+  if (typeof document === "undefined") return;
+  const accent =
+    getComputedStyle(document.documentElement)
+      .getPropertyValue("--accent")
+      .trim() || "#16A34A";
+  const ink = "#0a0a0a";
+  const colors = [accent, ink, "#fff", accent, accent];
+  for (let i = 0; i < 60; i++) {
+    const p = document.createElement("div");
+    p.className = "confetti-piece";
+    const x = window.innerWidth / 2 + (Math.random() - 0.5) * 80;
+    const y = window.innerHeight / 2;
+    p.style.left = `${x}px`;
+    p.style.top = `${y}px`;
+    p.style.background = colors[Math.floor(Math.random() * colors.length)]!;
+    const dx = (Math.random() - 0.5) * 800;
+    const dy = -Math.random() * 500 - 200;
+    const rot = Math.random() * 720 - 360;
+    document.body.appendChild(p);
+    p.animate(
+      [
+        { transform: "translate(0,0) rotate(0deg)", opacity: 1 },
+        {
+          transform: `translate(${dx}px, ${dy + 600}px) rotate(${rot}deg)`,
+          opacity: 0,
+        },
+      ],
+      { duration: 1500 + Math.random() * 500, easing: "cubic-bezier(.2,.8,.3,1)" }
+    ).onfinish = () => p.remove();
+  }
 }
 
-function IconPerson({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      aria-hidden
-    >
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  );
+function useReveal(): [React.RefObject<HTMLDivElement>, boolean] {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            setVisible(true);
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.15, rootMargin: "0px 0px -80px 0px" }
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, []);
+  return [ref, visible];
 }
 
-function IconBolt({ className }: { className?: string }) {
+function Reveal({
+  children,
+  delay = 0,
+  className = "",
+}: {
+  children: ReactNode;
+  delay?: number;
+  className?: string;
+}) {
+  const [ref, vis] = useReveal();
   return (
-    <svg
-      className={className}
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      aria-hidden
+    <div
+      ref={ref}
+      className={`reveal ${vis ? "in" : ""} ${className}`.trim()}
+      style={{ transitionDelay: `${delay}ms` }}
     >
-      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-    </svg>
-  );
-}
-
-function Avatar({ initials }: { initials: string }) {
-  return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#16A34A] text-xs font-semibold text-white">
-      {initials}
+      {children}
     </div>
   );
 }
 
-function ProductSignalCard({
-  company,
-  sizeRange,
-  headline,
-  bestFit,
-  hiring,
-  initials,
-  contactName,
-  contactTitle,
-  contactEmail,
-}: {
-  company: string;
-  sizeRange: string;
-  headline: string;
-  bestFit: string;
-  hiring: string;
-  initials: string;
-  contactName: string;
-  contactTitle: string;
-  contactEmail: string;
-}) {
+function Hero() {
+  const [magnet, setMagnet] = useState({ x: 0, y: 0 });
+  const magnetRef = useRef<HTMLSpanElement>(null);
+  const heroRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const h = heroRef.current;
+    if (!h) return;
+
+    const onMove = (e: MouseEvent) => {
+      const el = magnetRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const x = e.clientX - (r.left + r.width / 2);
+      const y = e.clientY - (r.top + r.height / 2);
+      const dist = Math.hypot(x, y);
+      if (dist < 90) {
+        setMagnet({ x: x * 0.35, y: y * 0.35 });
+      } else {
+        setMagnet({ x: 0, y: 0 });
+      }
+    };
+
+    const onLeave = () => setMagnet({ x: 0, y: 0 });
+
+    h.addEventListener("mousemove", onMove);
+    h.addEventListener("mouseleave", onLeave);
+    return () => {
+      h.removeEventListener("mousemove", onMove);
+      h.removeEventListener("mouseleave", onLeave);
+    };
+  }, []);
+
   return (
-    <article className="rounded-xl border border-[#F3F4F6] bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.08)] sm:p-6">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="text-sm font-bold text-[#0A0A0A]">{company}</span>
-          <span className="inline-flex rounded-md bg-[#F3F4F6] px-2 py-0.5 text-xs font-medium text-[#6B7280]">
-            {sizeRange}
-          </span>
-        </div>
-        <span
-          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium leading-none ${confidenceBadgeClass("very_high")}`}
-        >
-          Very high intent
+    <section ref={heroRef} className="hero">
+      <div className="hero-bg-grid" aria-hidden />
+      <div className="hero-bg-glow" aria-hidden />
+      <div className="hero-inner">
+        <span className="pill">
+          <span className="dot" aria-hidden />
+          Live signals updated weekly
         </span>
-      </div>
-      <p className="text-[17px] font-semibold leading-snug tracking-tight text-[#0A0A0A]">
-        {headline}
-      </p>
-      <span className="mt-2 inline-block rounded-full bg-[#DCFCE7] px-2.5 py-1 text-xs font-medium text-[#16A34A]">
-        Best fit: {bestFit}
-      </span>
-      <p className="mt-3 text-xs leading-relaxed text-[#6B7280]">{hiring}</p>
-      <div className="my-5 h-px bg-[#F3F4F6]" aria-hidden />
-      <div className="flex gap-3">
-        <Avatar initials={initials} />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-[#0A0A0A]">{contactName}</p>
-          <p className="mt-0.5 text-xs text-[#6B7280]">{contactTitle}</p>
-          <a
-            href={`mailto:${contactEmail}`}
-            className="mt-1 block truncate text-xs font-medium text-[#16A34A] underline-offset-2 hover:underline"
+        <h1 className="h1">
+          Your next customer
+          <br />
+          just posted a job.
+          <span className="h1-line2">You&apos;re not calling them yet.</span>
+        </h1>
+        <p className="hero-sub">
+          Every week, B2B SaaS companies hire VP Sales, build SDR teams, and bring
+          in CROs. That&apos;s when they buy tools. HireSignal finds them
+          automatically — scores them, ranks them, and hands you the right contact
+          before your competitors notice.
+        </p>
+        <div className="hero-cta">
+          <span
+            ref={magnetRef}
+            className="magnet"
+            style={{
+              transform: `translate(${magnet.x}px, ${magnet.y}px)`,
+            }}
           >
-            {contactEmail}
+            <Link
+              href="/sign-up"
+              className="btn btn-accent btn-lg"
+              onClick={() => fireConfetti()}
+            >
+              Start free trial
+              <span className="arrow">→</span>
+            </Link>
+          </span>
+          <a href="#product" className="btn btn-ghost btn-lg">
+            See how it works
+            <span className="arrow">→</span>
           </a>
         </div>
+        <div className="hero-meta">
+          14-day free trial · No credit card required · Cancel anytime
+        </div>
+
+        <LiveFeed />
       </div>
-    </article>
+    </section>
+  );
+}
+
+const feedItems = [
+  { time: "09:04", co: "Ramp", role: "VP of Sales", size: "501-1K", score: 5 },
+  { time: "09:11", co: "Clay", role: "Head of GTM", size: "51-200", score: 5 },
+  { time: "09:18", co: "Vercel", role: "RevOps Director", size: "201-500", score: 4 },
+  { time: "09:22", co: "Notion", role: "CRO", size: "1K+", score: 5 },
+  { time: "09:29", co: "Linear", role: "VP Marketing", size: "51-200", score: 4 },
+  {
+    time: "09:36",
+    co: "Retool",
+    role: "Sr. Manager, Sales",
+    size: "201-500",
+    score: 3,
+  },
+  { time: "09:41", co: "Attio", role: "Head of Sales", size: "11-50", score: 5 },
+  {
+    time: "09:48",
+    co: "Arc",
+    role: "VP Sales, Enterprise",
+    size: "201-500",
+    score: 4,
+  },
+  {
+    time: "09:55",
+    co: "Airbyte",
+    role: "Director, Sales Ops",
+    size: "51-200",
+    score: 4,
+  },
+];
+
+function LiveFeed() {
+  const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setOffset((o) => o + 1), 2200);
+    return () => clearInterval(id);
+  }, []);
+
+  const visible = 5;
+  const rows: Array<(typeof feedItems)[0] & { key: string }> = [];
+  for (let i = 0; i < visible; i++) {
+    const item = feedItems[(offset + i) % feedItems.length]!;
+    rows.push({ ...item, key: `${offset}-${i}` });
+  }
+
+  return (
+    <div className="live-feed">
+      <div className="live-feed-header">
+        <span>Last 60 minutes · 12 new signals</span>
+        <span className="status">
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 999,
+              background: "currentColor",
+              display: "inline-block",
+            }}
+            aria-hidden
+          />
+          Live
+        </span>
+      </div>
+      <div className="live-feed-body">
+        {rows.map((r, i) => (
+          <div
+            key={r.key}
+            className="feed-row"
+            style={{ animationDelay: `${i * 60}ms` }}
+          >
+            <span className="feed-time">{r.time}</span>
+            <span>
+              <span className="feed-co">{r.co}</span>
+              <span className="feed-role" style={{ marginLeft: 8 }}>
+                hiring {r.role}
+              </span>
+            </span>
+            <span className="feed-size">{r.size}</span>
+            <span className="feed-score">
+              <span className="score-bar">
+                {Array.from({ length: 5 }).map((_, k) => (
+                  <i key={k} className={k < r.score ? "on" : ""} />
+                ))}
+              </span>
+              <span className="score-num">{r.score * 20}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Marquee() {
+  const names = [
+    "Ramp",
+    "Clay",
+    "Vercel",
+    "Notion",
+    "Linear",
+    "Retool",
+    "Attio",
+    "Arc",
+    "Airbyte",
+    "Brex",
+    "Intercom",
+    "Plaid",
+    "Rippling",
+    "Gusto",
+  ];
+  const items = [...names, ...names];
+  return (
+    <>
+      <div className="marquee-label">Signals caught in the last 7 days</div>
+      <div className="marquee-wrap">
+        <div className="marquee-track">
+          {items.map((n, i) => (
+            <span key={`${n}-${i}`}>{n}</span>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SignalCardContent({ animate }: { animate: boolean }) {
+  const [score, setScore] = useState(0);
+  useEffect(() => {
+    if (!animate) return;
+    let raf = 0;
+    const start = performance.now();
+    const duration = 1200;
+    const target = 100;
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / duration);
+      const eased = 1 - (1 - p) ** 3;
+      setScore(Math.round(target * eased));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [animate]);
+
+  return (
+    <div>
+      <div className="sc-row">
+        <div>
+          <span className="sc-co">Brex</span>
+          <span className="sc-size">201–500</span>
+        </div>
+        <span className="sc-intent-pill">● Very high intent</span>
+      </div>
+      <div className="sc-headline">
+        New CRO hired → rebuilding sales stack (30 days)
+      </div>
+      <div className="sc-fit">
+        Best fit: CRM, revenue intelligence, forecasting tools
+      </div>
+      <div className="sc-meta">
+        Hiring 39 sales roles this week — 17 AEs, 1 CRO, 12 SDRs, 4 Sales Enablement
+      </div>
+
+      <div className="sc-score-mini">
+        <span className="label" style={{ minWidth: 78 }}>
+          Intent {score}/100
+        </span>
+        <span className="meter">
+          <span className="meter-fill" style={{ width: `${score}%` }} />
+        </span>
+      </div>
+
+      <div className="sc-contact">
+        <div className="sc-avatar">GM</div>
+        <div style={{ flex: 1 }}>
+          <div className="sc-name">Garrett Marker</div>
+          <div className="sc-role">Chief Revenue Officer</div>
+        </div>
+        <a href="mailto:garrett@brex.com" className="sc-email">
+          garrett@brex.com →
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function Check() {
+  return (
+    <svg
+      className="check"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+function EmailShowcase() {
+  const [ref, vis] = useReveal();
+  return (
+    <section className="section soft scroll-mt-24" id="product">
+      <div className="section-inner">
+        <Reveal>
+          <div className="eyebrow">What you get every Monday</div>
+        </Reveal>
+        <Reveal delay={80}>
+          <h2>Monday morning clarity.</h2>
+        </Reveal>
+        <Reveal delay={160}>
+          <p className="section-sub">
+            Open your inbox and know exactly who to call this week and why.
+          </p>
+        </Reveal>
+
+        <div className="email-showcase" ref={ref}>
+          <Reveal>
+            <div className="email-card-stack">
+              <div className="email-card back-2" aria-hidden />
+              <div className="email-card back-1" aria-hidden />
+              <div className="email-card front">
+                <SignalCardContent animate={vis} />
+              </div>
+            </div>
+          </Reveal>
+
+          <div className="email-showcase-text">
+            <Reveal delay={120}>
+              <h3>Scored. Ranked. Contact attached.</h3>
+              <p>
+                Each signal is a B2B SaaS company actively hiring a role that
+                signals buying intent — with the name, title, and verified email of
+                the decision-maker.
+              </p>
+            </Reveal>
+            <Reveal delay={200}>
+              <ul className="feature-list">
+                <li>
+                  <Check /> Intent score so you know where to start
+                </li>
+                <li>
+                  <Check /> Best-fit tool categories for each company
+                </li>
+                <li>
+                  <Check /> Your angle — what to pitch and why now
+                </li>
+                <li>
+                  <Check /> Verified email for the actual budget owner
+                </li>
+              </ul>
+            </Reveal>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Why() {
+  const items = [
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="4" width="18" height="18" rx="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+      ),
+      title: "Monday morning clarity",
+      body: "Open your inbox and know exactly who to call this week and why. No more spending mornings hunting for prospects.",
+    },
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg>
+      ),
+      title: "VP-level contacts, verified",
+      body: "Every signal includes the name, title, and real email of the person who owns the budget. Not a generic inbox.",
+    },
+    {
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+      ),
+      title: "Walk in prepared",
+      body: "We tell you what they're evaluating, why now, and the exact angle to use. Show up to every call knowing more than they expect.",
+    },
+  ];
+  return (
+    <section className="section" id="why">
+      <div className="section-inner">
+        <Reveal>
+          <div className="eyebrow">Why HireSignal</div>
+        </Reveal>
+        <Reveal delay={80}>
+          <h2>Three reasons reps keep it open.</h2>
+        </Reveal>
+        <div className="why-grid" style={{ marginTop: 56 }}>
+          {items.map((it, i) => (
+            <Reveal key={it.title} delay={i * 100}>
+              <div className="why-item">
+                <div className="why-icon">{it.icon}</div>
+                <h3>{it.title}</h3>
+                <p>{it.body}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function HowStep({
+  n,
+  t,
+  b,
+  delay,
+}: {
+  n: string;
+  t: string;
+  b: string;
+  delay: number;
+}) {
+  const [ref, vis] = useReveal();
+  return (
+    <div
+      ref={ref}
+      className={`how-step reveal ${vis ? "in" : ""}`}
+      style={{ transitionDelay: `${delay}ms` }}
+    >
+      <div className="how-num">{n}</div>
+      <h3>{t}</h3>
+      <p>{b}</p>
+    </div>
+  );
+}
+
+function HowItWorks() {
+  const steps = [
+    {
+      n: "01",
+      t: "We scan 100+ job boards nightly",
+      b: "Every night we check hiring activity across B2B SaaS companies — flagging VP Sales hires, SDR buildouts, RevOps additions, and CRO appointments.",
+    },
+    {
+      n: "02",
+      t: "Signals are scored and ranked",
+      b: "Companies are ranked by intent level, size, and signal strength. The most winnable targets rise to the top — enterprise noise sinks.",
+    },
+    {
+      n: "03",
+      t: "You get the list Monday morning",
+      b: "A clean digest lands in your inbox with contacts attached. Log in anytime to see the full feed, filter by signal type, and export to CSV.",
+    },
+  ];
+  return (
+    <section className="section soft" id="how">
+      <div className="section-inner">
+        <Reveal>
+          <h2 style={{ marginTop: 0 }}>Set it and forget it.</h2>
+        </Reveal>
+        <Reveal delay={80}>
+          <p className="section-sub">
+            HireSignal runs in the background so you don&apos;t have to.
+          </p>
+        </Reveal>
+        <div className="how-grid">
+          {steps.map((s, i) => (
+            <HowStep key={s.n} {...s} delay={i * 120} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Pricing() {
+  return (
+    <section className="section" id="pricing">
+      <div className="section-inner">
+        <Reveal>
+          <div className="eyebrow">Pricing</div>
+        </Reveal>
+        <Reveal delay={80}>
+          <h2>One plan. Every signal.</h2>
+        </Reveal>
+        <Reveal delay={160}>
+          <p className="section-sub">
+            Cancel anytime. No contracts. No per-seat gotchas.
+          </p>
+        </Reveal>
+
+        <Reveal delay={200}>
+          <div className="pricing-wrap">
+            <div className="pricing-card">
+              <div className="pricing-eyebrow">HireSignal Pro</div>
+              <div className="price-row">
+                <span className="price">$199</span>
+                <span className="price-per">/month</span>
+              </div>
+              <div className="pricing-hint">Start free for 14 days</div>
+              <ul className="pricing-list">
+                <li>
+                  <Check /> 25+ buying signals every week
+                </li>
+                <li>
+                  <Check /> Verified VP Sales and CRO contacts
+                </li>
+                <li>
+                  <Check /> Monday morning email digest
+                </li>
+                <li>
+                  <Check /> Winnable now filter
+                </li>
+                <li>
+                  <Check /> CSV export for your CRM
+                </li>
+                <li>
+                  <Check /> Cancel anytime
+                </li>
+              </ul>
+              <Link href="/sign-up" className="btn btn-primary btn-lg">
+                Start your free trial
+                <span className="arrow">→</span>
+              </Link>
+              <div className="pricing-fine">No credit card required</div>
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+function FinalCTA() {
+  return (
+    <section className="final-cta">
+      <Reveal>
+        <h2>Your next customer is hiring right now.</h2>
+      </Reveal>
+      <Reveal delay={80}>
+        <p>Find out who — before your competitors do.</p>
+      </Reveal>
+      <Reveal delay={160}>
+        <Link
+          href="/sign-up"
+          className="btn btn-accent btn-lg"
+          onClick={() => fireConfetti()}
+        >
+          Start free trial <span className="arrow">→</span>
+        </Link>
+      </Reveal>
+    </section>
+  );
+}
+
+function Nav() {
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 10);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  return (
+    <nav className={`nav ${scrolled ? "scrolled" : ""}`}>
+      <div className="nav-inner">
+        <Link href="/" className="brand">
+          <span className="brand-mark">
+            <Image
+              src="/logo.png"
+              alt=""
+              width={1536}
+              height={1024}
+              sizes="84px"
+              className="brand-logo-img"
+              quality={95}
+              priority
+            />
+          </span>
+          HireSignal
+        </Link>
+        <div className="nav-actions">
+          <Link href="/sign-in" className="btn btn-ghost">
+            Log in
+          </Link>
+          <Link href="/sign-up" className="btn btn-primary">
+            Start free trial
+          </Link>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="footer">
+      <div className="footer-inner">
+        <div>© 2026 HireSignal · Made for B2B SaaS operators</div>
+        <div className="footer-links">
+          <a href="#">Privacy</a>
+          <a href="#">Terms</a>
+          <a href="#">Contact</a>
+        </div>
+      </div>
+    </footer>
   );
 }
 
@@ -143,332 +702,16 @@ export function LandingPage() {
   useSmoothScroll();
 
   return (
-    <div className="min-h-screen bg-[#FFFFFF] font-sans text-[#0A0A0A] antialiased">
-      {/* Section 1 — Announcement */}
-      <Link
-        href="/sign-up"
-        className="block bg-[#0A0A0A] px-4 py-2.5 text-center text-[11px] font-medium uppercase tracking-[0.12em] text-white transition hover:bg-[#171717]"
-      >
-        Early access pricing — $199/month for founding members · Spots limited
-        →
-      </Link>
-
-      {/* Section 2 — Navbar */}
-      <header className="sticky top-0 z-50 border-b border-[#F3F4F6] bg-[#FFFFFF]/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <Link
-            href="/"
-            className="flex items-center gap-2 text-base font-bold tracking-tight text-[#0A0A0A] sm:text-lg"
-          >
-            <Image
-              src="/logo.png"
-              alt="HireSignal"
-              width={1536}
-              height={1024}
-              className="h-16 w-auto shrink-0 object-contain"
-              sizes="128px"
-              quality={100}
-              priority
-            />
-            HireSignal
-          </Link>
-          <div className="flex shrink-0 gap-2 sm:gap-3">
-            <Link
-              href="/sign-in"
-              className="rounded-lg border border-[#0A0A0A] bg-white px-3 py-2 text-sm font-semibold text-[#0A0A0A] transition hover:bg-[#F9FAFB] sm:px-4"
-            >
-              Log in
-            </Link>
-            <Link
-              href="/sign-up"
-              className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#262626] sm:px-4"
-            >
-              Start free trial
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <main>
-        {/* Section 3 — Hero */}
-        <section className="px-4 pb-20 pt-16 sm:px-6 sm:pb-28 sm:pt-24">
-          <div className="mx-auto max-w-4xl text-center">
-            <p className="mb-8 inline-flex items-center gap-2 rounded-full bg-[#DCFCE7] px-3.5 py-1.5 text-xs font-semibold text-[#16A34A]">
-              <span className="text-[10px]" aria-hidden>
-                ●
-              </span>
-              Live signals updated weekly
-            </p>
-            <h1 className="text-4xl font-bold leading-[1.05] tracking-tight text-[#0A0A0A] sm:text-5xl md:text-6xl md:leading-[1.02]">
-              <span className="block">Your next customer</span>
-              <span className="block">just posted a job.</span>
-              <span className="mt-2 block font-medium text-[#6B7280]">
-                You&apos;re not calling them yet.
-              </span>
-            </h1>
-            <p className="mx-auto mt-8 max-w-2xl text-base leading-relaxed text-[#6B7280] sm:text-lg sm:leading-relaxed">
-              Every week, B2B SaaS companies hire VP Sales, build SDR teams, and
-              bring in CROs. That&apos;s when they buy tools. HireSignal finds
-              them automatically — scores them, ranks them, and hands you the
-              right contact before your competitors notice.
-            </p>
-            <div className="mt-10 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:justify-center">
-              <Link
-                href="/sign-up"
-                className="inline-flex items-center justify-center rounded-lg bg-[#0A0A0A] px-8 py-4 text-sm font-semibold text-white transition hover:bg-[#262626] sm:text-base"
-              >
-                Start free trial
-              </Link>
-              <a
-                href="#product"
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#0A0A0A] bg-white px-8 py-4 text-sm font-semibold text-[#0A0A0A] transition hover:bg-[#F9FAFB] sm:text-base"
-              >
-                See how it works
-                <span aria-hidden>→</span>
-              </a>
-            </div>
-            <p className="mt-8 text-center text-xs text-[#6B7280]">
-              14-day free trial · No credit card required · Cancel anytime
-            </p>
-          </div>
-        </section>
-
-        {/* Section 4 — Product mock */}
-        <section
-          id="product"
-          className="scroll-mt-24 border-t border-[#F3F4F6] bg-[#F9FAFB] px-4 py-20 sm:px-6 sm:py-28"
-        >
-          <div className="mx-auto max-w-6xl">
-            <div className="text-center">
-              <p className="inline-flex rounded-full bg-[#DCFCE7] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#16A34A]">
-                What you get every Monday
-              </p>
-              <h2 className="mt-6 text-3xl font-bold tracking-tight text-[#0A0A0A] sm:text-4xl">
-                Monday morning clarity.
-              </h2>
-              <p className="mx-auto mt-4 max-w-xl text-base text-[#6B7280] sm:text-lg">
-                Open your inbox and know exactly who to call this week and why.
-              </p>
-            </div>
-            <div className="mt-14 grid gap-6 lg:grid-cols-2 lg:gap-8">
-              <ProductSignalCard
-                company="Brex"
-                sizeRange="201-500"
-                headline="New CRO hired → rebuilding sales stack (30 days)"
-                bestFit="CRM, revenue intelligence, forecasting tools"
-                hiring="Hiring 39 sales roles this week including 17 AEs, 1 CRO, 12 SDRs, 4 Sales Enablements"
-                initials="GM"
-                contactName="Garrett Marker"
-                contactTitle="Chief Revenue Officer"
-                contactEmail="garrett@brex.com"
-              />
-              <ProductSignalCard
-                company="Intercom"
-                sizeRange="51-200"
-                headline="Standing up outbound from scratch → buying sales tools now (30 days)"
-                bestFit="Sales engagement / sequencing (Outreach, Salesloft, Apollo)"
-                hiring="Hiring 31 sales roles this week including 20 AEs, 7 SDRs, 1 RevOps"
-                initials="MK"
-                contactName="Megan Killion"
-                contactTitle="Head of Sales, Americas"
-                contactEmail="megan.killion@intercom.io"
-              />
-            </div>
-            <p className="mt-10 text-center text-sm text-[#6B7280]">
-              + 23 more signals in this week&apos;s feed
-            </p>
-          </div>
-        </section>
-
-        {/* Section 5 — Value props */}
-        <section className="border-t border-[#F3F4F6] bg-[#FFFFFF] px-4 py-20 sm:px-6 sm:py-28">
-          <div className="mx-auto max-w-6xl">
-            <p className="text-center text-[11px] font-bold uppercase tracking-[0.16em] text-[#16A34A]">
-              Why HireSignal
-            </p>
-            <div className="mt-14 grid gap-12 sm:grid-cols-3 sm:gap-10 lg:gap-14">
-              <div>
-                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-[#F3F4F6] bg-[#F9FAFB] text-[#0A0A0A]">
-                  <IconCalendar className="h-5 w-5" />
-                </div>
-                <h3 className="text-lg font-bold text-[#0A0A0A]">
-                  Monday morning clarity
-                </h3>
-                <p className="mt-3 text-sm leading-relaxed text-[#6B7280]">
-                  Open your inbox and know exactly who to call this week and why.
-                  No more spending mornings hunting for prospects.
-                </p>
-              </div>
-              <div>
-                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-[#F3F4F6] bg-[#F9FAFB] text-[#0A0A0A]">
-                  <IconPerson className="h-5 w-5" />
-                </div>
-                <h3 className="text-lg font-bold text-[#0A0A0A]">
-                  VP-level contacts, verified
-                </h3>
-                <p className="mt-3 text-sm leading-relaxed text-[#6B7280]">
-                  Every signal includes the name, title, and real email of the
-                  person who owns the budget. Not a generic inbox.
-                </p>
-              </div>
-              <div>
-                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-[#F3F4F6] bg-[#F9FAFB] text-[#0A0A0A]">
-                  <IconBolt className="h-5 w-5" />
-                </div>
-                <h3 className="text-lg font-bold text-[#0A0A0A]">
-                  Walk in prepared
-                </h3>
-                <p className="mt-3 text-sm leading-relaxed text-[#6B7280]">
-                  We tell you what they&apos;re evaluating, why now, and the
-                  exact angle to use. Show up to every call knowing more than they
-                  expect.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Section 6 — How it works */}
-        <section className="border-t border-[#F3F4F6] bg-[#F9FAFB] px-4 py-20 sm:px-6 sm:py-28">
-          <div className="mx-auto max-w-6xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-[#0A0A0A] sm:text-4xl">
-              Set it and forget it.
-            </h2>
-            <p className="mx-auto mt-4 max-w-2xl text-base text-[#6B7280] sm:text-lg">
-              HireSignal runs in the background so you don&apos;t have to.
-            </p>
-          </div>
-          <div className="mx-auto mt-16 grid max-w-6xl gap-12 md:grid-cols-3 md:gap-8 lg:gap-12">
-            <div>
-              <p className="text-5xl font-bold leading-none text-[#E5E7EB] sm:text-6xl">
-                01
-              </p>
-              <h3 className="mt-4 text-lg font-bold text-[#0A0A0A]">
-                We scan 100+ job boards nightly
-              </h3>
-              <p className="mt-3 text-sm leading-relaxed text-[#6B7280]">
-                Every night we check hiring activity across B2B SaaS companies
-                — flagging VP Sales hires, SDR buildouts, RevOps additions, and
-                CRO appointments.
-              </p>
-            </div>
-            <div>
-              <p className="text-5xl font-bold leading-none text-[#E5E7EB] sm:text-6xl">
-                02
-              </p>
-              <h3 className="mt-4 text-lg font-bold text-[#0A0A0A]">
-                Signals are scored and ranked
-              </h3>
-              <p className="mt-3 text-sm leading-relaxed text-[#6B7280]">
-                Companies are ranked by intent level, size, and signal strength.
-                The most winnable targets rise to the top — enterprise noise sinks.
-              </p>
-            </div>
-            <div>
-              <p className="text-5xl font-bold leading-none text-[#E5E7EB] sm:text-6xl">
-                03
-              </p>
-              <h3 className="mt-4 text-lg font-bold text-[#0A0A0A]">
-                You get the list Monday morning
-              </h3>
-              <p className="mt-3 text-sm leading-relaxed text-[#6B7280]">
-                A clean digest lands in your inbox with contacts attached. Log in
-                anytime to see the full feed, filter by signal type, and export to
-                CSV.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Section 7 — Pricing */}
-        <section className="border-t border-[#F3F4F6] bg-[#FFFFFF] px-4 py-20 sm:px-6 sm:py-28">
-          <div className="mx-auto max-w-md text-center">
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#6B7280]">
-              Pricing
-            </p>
-            <h2 className="mt-3 text-3xl font-bold tracking-tight text-[#0A0A0A] sm:text-4xl">
-              One plan. Everything included.
-            </h2>
-            <div className="mt-10 rounded-2xl border border-[#F3F4F6] bg-white p-8 shadow-[0_1px_3px_rgba(0,0,0,0.08)] sm:p-10">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-                HireSignal Pro
-              </p>
-              <p className="mt-2 text-5xl font-bold tracking-tight text-[#0A0A0A] sm:text-6xl">
-                $199
-                <span className="text-xl font-medium text-[#6B7280] sm:text-2xl">
-                  /month
-                </span>
-              </p>
-              <p className="mt-3 text-sm text-[#6B7280]">Start free for 14 days</p>
-              <ul className="mt-8 space-y-3 text-left text-sm text-[#0A0A0A]">
-                {[
-                  "25+ buying signals every week",
-                  "Verified VP Sales and CRO contacts",
-                  "Monday morning email digest",
-                  "Winnable now filter",
-                  "CSV export for your CRM",
-                  "Cancel anytime",
-                ].map((line) => (
-                  <li key={line} className="flex gap-3">
-                    <span className="font-semibold text-[#16A34A]" aria-hidden>
-                      ✓
-                    </span>
-                    <span>{line}</span>
-                  </li>
-                ))}
-              </ul>
-              <Link
-                href="/sign-up"
-                className="mt-8 flex w-full items-center justify-center rounded-lg bg-[#0A0A0A] py-3.5 text-sm font-semibold text-white transition hover:bg-[#262626]"
-              >
-                Start your free trial
-              </Link>
-              <p className="mt-4 text-center text-xs text-[#6B7280]">
-                No credit card required
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Section 8 — Final CTA */}
-        <section className="border-t border-[#F3F4F6] bg-[#F9FAFB] px-4 py-16 text-center sm:px-6 sm:py-20">
-          <div className="mx-auto max-w-2xl">
-            <h2 className="text-2xl font-bold leading-tight text-[#0A0A0A] sm:text-3xl md:text-4xl">
-              Your next customer is hiring right now.
-            </h2>
-            <p className="mt-4 text-base text-[#6B7280] sm:text-lg">
-              Find out who before your competitors do.
-            </p>
-            <Link
-              href="/sign-up"
-              className="mt-8 inline-flex items-center justify-center rounded-lg bg-[#0A0A0A] px-8 py-3.5 text-sm font-semibold text-white transition hover:bg-[#262626] sm:text-base"
-            >
-              Start free trial
-            </Link>
-          </div>
-        </section>
-      </main>
-
-      {/* Section 9 — Footer */}
-      <footer className="border-t border-[#F3F4F6] bg-[#FFFFFF] px-4 py-10 sm:px-6">
-        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 text-sm text-[#6B7280] sm:grid-cols-3 sm:items-center">
-          <div className="font-bold text-[#0A0A0A] sm:justify-self-start">
-            HireSignal
-          </div>
-          <div className="hidden sm:block" aria-hidden />
-          <div className="sm:justify-self-end">
-            <a
-              href="mailto:support@hiresignal.com"
-              className="font-medium text-[#0A0A0A] hover:text-[#16A34A]"
-            >
-              support@hiresignal.com
-            </a>
-          </div>
-        </div>
-        <p className="mx-auto mt-8 max-w-6xl text-center text-xs text-[#9CA3AF] sm:mt-10">
-          © 2026 HireSignal. All rights reserved.
-        </p>
-      </footer>
+    <div className="landing-root">
+      <Nav />
+      <Hero />
+      <Marquee />
+      <EmailShowcase />
+      <Why />
+      <HowItWorks />
+      <Pricing />
+      <FinalCTA />
+      <Footer />
     </div>
   );
 }

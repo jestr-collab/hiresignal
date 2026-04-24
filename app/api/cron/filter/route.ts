@@ -4,7 +4,6 @@ import {
   buildSignalContext,
   capScore,
   classifyJob,
-  computeConfidenceLevel,
   computeEnterpriseFlag,
   computeWhyItMatters,
   isFirstBuilderHire,
@@ -149,14 +148,11 @@ function normalizeCompanyDomain(domain: string | null | undefined): string {
   return (domain ?? "").trim().toLowerCase().replace(/^www\./, "");
 }
 
-function syncConfidenceWithFinalScore(
-  score: number,
-  confidence: ConfidenceLevel | null | undefined
-): ConfidenceLevel {
-  if (score >= 90) {
-    return confidence === "very_high" ? "very_high" : "high";
-  }
-  return confidence ?? "medium";
+/** Derive confidence from final score only (keeps score and confidence aligned). */
+function confidenceFromFinalScore(score: number): ConfidenceLevel {
+  if (score >= 95) return "very_high";
+  if (score >= 80) return "high";
+  return "medium";
 }
 
 /** Monday (local) of the calendar week containing `date`, as YYYY-MM-DD for `signals.week_of`. */
@@ -351,16 +347,7 @@ export async function POST(request: NextRequest) {
         companySizeRange,
         countsByType
       );
-      const confidence_level = computeConfidenceLevel(
-        signalType,
-        jobCountForType,
-        companySizeRange,
-        countsByType
-      );
-      const finalConfidenceLevel = syncConfidenceWithFinalScore(
-        score,
-        confidence_level
-      );
+      const finalConfidenceLevel = confidenceFromFinalScore(score);
 
       rowsToInsert.push({
         company_id: companyId,
@@ -407,10 +394,7 @@ export async function POST(request: NextRequest) {
           confidence_level: ConfidenceLevel | null;
         };
         const nextScore = Math.max(0, (row.score ?? 0) - 20);
-        const nextConfidenceLevel = syncConfidenceWithFinalScore(
-          nextScore,
-          row.confidence_level
-        );
+        const nextConfidenceLevel = confidenceFromFinalScore(nextScore);
         const { error: penErr } = await supabase
           .from("signals")
           .update({

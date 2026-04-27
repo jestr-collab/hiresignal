@@ -5,7 +5,6 @@ export default function SignInPage() {
     <div className="flex min-h-screen items-center justify-center bg-white">
       <SignIn
         routing="hash"
-        path="/sign-in"
         signUpUrl="/sign-up"
         afterSignInUrl="/"
         afterSignUpUrl="/"

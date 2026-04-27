@@ -5,7 +5,6 @@ export default function SignUpPage() {
     <div className="flex min-h-screen items-center justify-center bg-white">
       <SignUp
         routing="hash"
-        path="/sign-up"
         signInUrl="/sign-in"
         afterSignInUrl="/"
         afterSignUpUrl="/"

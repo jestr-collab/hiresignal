@@ -4,14 +4,9 @@ import { SyncSubscriber } from "@/components/SyncSubscriber";
 import { UserButton } from "@clerk/nextjs";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import "../app/dashboard.css";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const signalsActive =
-    pathname === "/" || pathname.startsWith("/signal");
-
   return (
     <div className="dashboard-skin">
       <SyncSubscriber />
@@ -32,20 +27,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             </span>
             HireSignal
           </Link>
-          <nav className="dash-nav-tabs" aria-label="Primary">
-            <Link
-              href="/"
-              className={`dash-nav-tab${signalsActive ? " is-active" : ""}`}
-            >
-              Signals
-            </Link>
-            <button type="button" className="dash-nav-tab" disabled>
-              Exports
-            </button>
-            <button type="button" className="dash-nav-tab" disabled>
-              Settings
-            </button>
-          </nav>
           <div className="dash-nav-right">
             <a className="dash-billing" href="/api/stripe/portal">
               Manage billing

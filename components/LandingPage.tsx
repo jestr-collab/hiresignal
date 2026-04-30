@@ -586,7 +586,7 @@ function Pricing() {
             <div className="pricing-card">
               <div className="pricing-eyebrow">HireSignal Pro</div>
               <div className="price-row">
-                <span className="price">$199</span>
+                <span className="price">$99</span>
                 <span className="price-per">/month</span>
               </div>
               <div className="pricing-hint">Start free for 14 days</div>

@@ -132,7 +132,7 @@ export default function UpgradePage() {
         </ul>
 
         <p style={price}>
-          $199<span style={priceSuffix}>/month</span>
+          $99<span style={priceSuffix}>/month</span>
         </p>
 
         <SignedIn>
